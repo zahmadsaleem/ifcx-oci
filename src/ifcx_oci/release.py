@@ -94,6 +94,11 @@ def convert(source, output, shard_bytes, threads, resume=False):
         store.db.execute("INSERT OR IGNORE INTO meshes SELECT * FROM source.meshes")
         store.commit()
         store.db.execute("DETACH DATABASE source")
+    return assemble(store, output, reports, shard_bytes)
+
+
+def assemble(store, output, reports, shard_bytes):
+    """Serialize a completed spool; IFC interpretation is independent of this phase."""
     print("Writing shared geometry and size-bounded Parquet layers...", flush=True)
     # Resume can change the shard target. Remove superseded generated shards so
     # reading a layer directory never includes stale rows from an earlier build.
@@ -131,7 +136,7 @@ def convert(source, output, shard_bytes, threads, resume=False):
         "ifcopenshellVersion": ifcopenshell.version,
         "shardTargetBytes": shard_bytes,
         "coordinateSystem": "Y-up, right-handed, metres",
-        "sourceFiles": len(files),
+        "sourceFiles": len(reports),
         "rowCounts": counts,
         "uniqueGeometry": mesh_count,
         "files": sorted(payloads, key=lambda x: x["path"]),
