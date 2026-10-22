@@ -257,6 +257,17 @@ def verify(root):
                     references.add(("entity", row["pset_id"]))
                     if row["parent_id"]:
                         references.add(("property", row["parent_id"]))
+                    for value in row["values"]:
+                        if value["reference"] is not None:
+                            target = json.loads(value["reference"])
+                            if (
+                                not isinstance(target, dict)
+                                or canonical(target) != value["reference"]
+                            ):
+                                raise ValueError(
+                                    "Property reference must be a canonical JSON object"
+                                )
+                            attribute_references(target)
                 elif kind == "relations":
                     references.update(
                         [

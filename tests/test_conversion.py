@@ -5,11 +5,12 @@ import struct
 import ifcopenshell
 import ifcopenshell.guid
 import numpy as np
+import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
 from ifcx_oci.contract import canonical
-from ifcx_oci.release import convert, verify
+from ifcx_oci.release import convert, file_hash, verify
 
 
 def fixture(path):
@@ -332,3 +333,19 @@ def test_resume_replaces_obsolete_shard_files(tmp_path):
     actual = {p.relative_to(root).as_posix() for p in root.rglob("*.parquet")}
     assert actual == {p for p in declared if p.endswith(".parquet")}
     assert verify(root)["valid"]
+
+
+def test_property_reference_must_resolve_even_with_valid_payload_hash(converted):
+    _, root = converted
+    index = json.loads((root / "index.json").read_bytes())
+    item = next(item for item in index["files"] if item["role"] == "properties")
+    path = root / item["path"]
+    table = pq.read_table(path)
+    rows = table.to_pylist()
+    row = next(row for row in rows if row["name"] == "Material")
+    row["values"][0]["reference"] = canonical({"$ref": "missing-entity"})
+    pq.write_table(pa.Table.from_pylist(rows, schema=table.schema), path)
+    item.update(size=path.stat().st_size, digest=file_hash(path))
+    (root / "index.json").write_text(canonical(index))
+    with pytest.raises(ValueError, match="Unresolved owner reference"):
+        verify(root)
