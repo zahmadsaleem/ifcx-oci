@@ -20,11 +20,11 @@ class Store:
         self.db.execute("""CREATE TABLE IF NOT EXISTS records(
             kind TEXT, id TEXT, key TEXT, payload BLOB, size INTEGER, PRIMARY KEY(kind,id))""")
         self.db.execute(
-            "CREATE INDEX IF NOT EXISTS partition_index ON records(kind,key)"
+            "CREATE INDEX IF NOT EXISTS partition_index ON records(kind,key,size)"
         )
         self.db.execute("""CREATE TABLE IF NOT EXISTS meshes(
             id TEXT PRIMARY KEY, key TEXT, positions BLOB, indices BLOB, materials BLOB, meta BLOB, size INTEGER)""")
-        self.db.execute("CREATE INDEX IF NOT EXISTS mesh_partition ON meshes(key)")
+        self.db.execute("CREATE INDEX IF NOT EXISTS mesh_partition ON meshes(key,size)")
 
     def put(self, kind, row):
         payload = encoded(row)

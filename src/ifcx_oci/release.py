@@ -84,7 +84,8 @@ def convert(source, output, shard_bytes, threads, resume=False):
         if p.exists():
             p.unlink()
     store = Store(combined)
-    for path in files:
+    for number, path in enumerate(files, 1):
+        print(f"Merging extracted model {number}/{len(files)}: {path.name}", flush=True)
         key = str(uuid.uuid5(NAMESPACE, "model:" + path.name))
         store.db.execute(
             "ATTACH DATABASE ? AS source", (str(work / (key + ".sqlite")),)
@@ -103,6 +104,7 @@ def convert(source, output, shard_bytes, threads, resume=False):
             old.unlink()
     payloads = write_shards(store, output, shard_bytes)
     for kind in SCHEMAS:
+        print(f"Writing {kind} shards...", flush=True)
         payloads.extend(store.parquet_shards(kind, output, shard_bytes))
     contract = output / "schema/profile.json"
     write_json(contract, description())
