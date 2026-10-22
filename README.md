@@ -10,6 +10,10 @@ copies the resulting artifact. A small JSON index defines the release's contents
 This is an experimental proposal alongside [buildingSMART's IFC5 development](https://github.com/buildingSMART/IFC5-development).
 It is not a buildingSMART-approved encoding or a lossless STEP round-trip format.
 
+The corresponding proposal is [buildingSMART IFC5-development #155: Encoding flexibility and interoperable IFC5 artifacts through OCI](https://github.com/buildingSMART/IFC5-development/issues/155).
+It proposes governed encoding profiles and independently owned artifact
+repositories. This repository is the implementation experiment linked from that discussion.
+
 ## Motivation
 
 A building model passes between designers, engineers, contractors, owners and
