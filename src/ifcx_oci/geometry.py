@@ -124,8 +124,8 @@ def write_shards(store, root, target):
 
     def partition(prefix):
         count, total = store.db.execute(
-            "SELECT count(*),coalesce(sum(size),0) FROM meshes WHERE key LIKE ?",
-            (prefix + "%",),
+            "SELECT count(*),coalesce(sum(size),0) FROM meshes WHERE key >= ? AND key < ?",
+            (prefix, prefix + "g"),
         ).fetchone()
         if not count:
             return
@@ -134,8 +134,8 @@ def write_shards(store, root, target):
                 partition(prefix + ch)
             return
         meshes = store.db.execute(
-            "SELECT id,positions,indices,materials,meta FROM meshes WHERE key LIKE ? ORDER BY id",
-            (prefix + "%",),
+            "SELECT id,positions,indices,materials,meta FROM meshes WHERE key >= ? AND key < ? ORDER BY id",
+            (prefix, prefix + "g"),
         ).fetchall()
         payload, representations = glb(meshes)
         if len(payload) > target and count > 1:

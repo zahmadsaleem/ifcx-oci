@@ -94,6 +94,13 @@ def convert(source, output, shard_bytes, threads, resume=False):
         store.commit()
         store.db.execute("DETACH DATABASE source")
     print("Writing shared geometry and size-bounded Parquet layers...", flush=True)
+    # Resume can change the shard target. Remove superseded generated shards so
+    # reading a layer directory never includes stale rows from an earlier build.
+    (output / "index.json").unlink(missing_ok=True)
+    for kind in [*SCHEMAS, "geometry"]:
+        extension = "*.glb" if kind == "geometry" else "*.parquet"
+        for old in (output / kind).glob(extension):
+            old.unlink()
     payloads = write_shards(store, output, shard_bytes)
     for kind in SCHEMAS:
         payloads.extend(store.parquet_shards(kind, output, shard_bytes))

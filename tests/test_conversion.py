@@ -1,3 +1,4 @@
+import hashlib
 import json
 import struct
 
@@ -121,6 +122,63 @@ def fixture(path):
         RelatedObjects=walls,
         RelatingPropertyDefinition=pset,
     )
+    sequence = model.create_entity(
+        "IfcPropertyListValue",
+        Name="Sequence",
+        ListValues=[model.create_entity("IfcInteger", x) for x in [3, 0, 2]],
+    )
+    nested_list = model.create_entity(
+        "IfcComplexProperty", Name="Core", UsageName="Layer", HasProperties=[sequence]
+    )
+    layers = model.create_entity(
+        "IfcComplexProperty",
+        Name="Layers",
+        UsageName="Assembly",
+        HasProperties=[nested_list],
+    )
+    complex_number = model.create_entity(
+        "IfcPropertySingleValue",
+        Name="Impedance",
+        NominalValue=model.create_entity("IfcComplexNumber", (1.5, -2.5)),
+    )
+    enumeration = model.create_entity(
+        "IfcPropertyEnumeration",
+        Name="Options",
+        EnumerationValues=[model.create_entity("IfcLabel", x) for x in ["A", "B"]],
+    )
+    selected = model.create_entity(
+        "IfcPropertyEnumeratedValue",
+        Name="Choice",
+        EnumerationValues=[model.create_entity("IfcLabel", "B")],
+        EnumerationReference=enumeration,
+    )
+    reference = model.create_entity(
+        "IfcPropertyReferenceValue",
+        Name="Material",
+        PropertyReference=model.create_entity("IfcMaterial", Name="Concrete"),
+    )
+    pset.HasProperties += (layers, complex_number, selected, reference)
+    length = model.create_entity("IfcQuantityLength", Name="Length", LengthValue=2.0)
+    complex_quantity = model.create_entity(
+        "IfcPhysicalComplexQuantity",
+        Name="Dimensions",
+        HasQuantities=[length],
+        Discrimination="Layer",
+        Quality="Nominal",
+        Usage="Design",
+    )
+    quantities = model.create_entity(
+        "IfcElementQuantity",
+        GlobalId=guid(),
+        Name="Quantities",
+        Quantities=[complex_quantity],
+    )
+    model.create_entity(
+        "IfcRelDefinesByProperties",
+        GlobalId=guid(),
+        RelatedObjects=[walls[0]],
+        RelatingPropertyDefinition=quantities,
+    )
     model.write(path)
 
 
@@ -224,3 +282,53 @@ def test_glb_dimensions_and_y_up_placement(converted):
         np.array(r["transform"]).reshape(4, 4, order="F")[:3, 3] for r in walls
     ]
     assert np.isclose(np.linalg.norm(translations[0] - translations[1]), 5.0)
+
+
+def test_complex_numbers_deep_groups_and_quantity_metadata(converted):
+    _, root = converted
+    rows = records(root, "properties")
+    impedance = next(r for r in rows if r["name"] == "Impedance")["values"][0]
+    assert impedance["ifc_type"] == "IfcComplexNumber"
+    assert impedance["components_real"] == [1.5, -2.5]
+    sequence = next(r for r in rows if r["name"] == "Sequence")
+    by_id = {r["id"]: r for r in rows}
+    core = by_id[sequence["parent_id"]]
+    assert core["name"] == "Core"
+    assert by_id[core["parent_id"]]["name"] == "Layers"
+    assert [v["integer"] for v in sequence["values"]] == [3, 0, 2]
+    choice = next(r for r in rows if r["name"] == "Choice")
+    assert [(v["role"], v["text"]) for v in choice["values"]] == [
+        ("selected", "B"),
+        ("allowed", "A"),
+        ("allowed", "B"),
+    ]
+    material = next(r for r in rows if r["name"] == "Material")["values"][0]
+    assert json.loads(material["reference"])["ifcClass"] == "IfcMaterial"
+    dimensions = next(r for r in rows if r["name"] == "Dimensions")
+    assert [dimensions[k] for k in ("discrimination", "quality", "usage")] == [
+        "Layer",
+        "Nominal",
+        "Design",
+    ]
+    length = next(r for r in rows if r["parent_id"] == dimensions["id"])
+    assert length["ifc_class"] == "IfcQuantityLength"
+    assert length["values"][0]["real"] == 2.0
+
+
+def test_resume_replaces_obsolete_shard_files(tmp_path):
+    source = tmp_path / "model.ifc"
+    fixture(source)
+    model = ifcopenshell.open(source)
+    for i, wall in enumerate(model.by_type("IfcWall")):
+        wall.Description = "".join(
+            hashlib.sha256(f"{i}:{n}".encode()).hexdigest() for n in range(4096)
+        )
+    model.write(source)
+    root = tmp_path / "release"
+    convert(source, root, 64 * 1024, 1)
+    assert len(list((root / "entities").glob("*.parquet"))) > 1
+    index = convert(source, root, 8 * 1024**2, 1, resume=True)
+    declared = {item["path"] for item in index["files"]}
+    actual = {p.relative_to(root).as_posix() for p in root.rglob("*.parquet")}
+    assert actual == {p for p in declared if p.endswith(".parquet")}
+    assert verify(root)["valid"]

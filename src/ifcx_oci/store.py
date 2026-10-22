@@ -66,9 +66,11 @@ class Store:
         result = []
 
         def partition(prefix):
+            # Hex keys end at 'f'. Explicit bounds use the B-tree index; SQLite's
+            # default case-insensitive LIKE cannot range-scan this binary index.
             count, total = self.db.execute(
-                "SELECT count(*),coalesce(sum(size),0) FROM records WHERE kind=? AND key LIKE ?",
-                (kind, prefix + "%"),
+                "SELECT count(*),coalesce(sum(size),0) FROM records WHERE kind=? AND key >= ? AND key < ?",
+                (kind, prefix, prefix + "g"),
             ).fetchone()
             if not count:
                 return
@@ -80,8 +82,8 @@ class Store:
             rows = [
                 json.loads(x[0])
                 for x in self.db.execute(
-                    "SELECT payload FROM records WHERE kind=? AND key LIKE ? ORDER BY id",
-                    (kind, prefix + "%"),
+                    "SELECT payload FROM records WHERE kind=? AND key >= ? AND key < ? ORDER BY id",
+                    (kind, prefix, prefix + "g"),
                 )
             ]
             path = directory / ((prefix or "root") + ".parquet")

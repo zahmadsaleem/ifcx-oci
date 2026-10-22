@@ -64,6 +64,9 @@ SCHEMAS = {
             pa.field("kind", pa.string(), nullable=False),
             ("description", pa.string()),
             ("usage_name", pa.string()),
+            ("discrimination", pa.string()),
+            ("quality", pa.string()),
+            ("usage", pa.string()),
             ("unit", pa.string()),
             ("defining_unit", pa.string()),
             ("defined_unit", pa.string()),
@@ -129,7 +132,7 @@ def description():
             "keys": "exact IFC forward attribute names",
             "references": {
                 "$ref": "exported entity/type ID",
-                "$sourceRef": "unmaterialized STEP record in this row's model_id",
+                "$sourceRef": "source STEP record in this row's model_id; resource graph need not be materialized",
             },
             "typedValue": {"$ifcType": "IFC SELECT value type", "value": "JSON value"},
             "null": "explicit absent forward attribute; distinct from missing key",

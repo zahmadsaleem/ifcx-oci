@@ -24,6 +24,10 @@ a contractual delivery: the parties need to identify its precise contents,
 preserve the associated schemas and supporting evidence, and distinguish a
 subsequent revision from the release they accepted.
 
+Where the original IFC is the authoritative issued document, retain it or deliver
+it alongside the derived representations. This converter records its SHA-256;
+it does not embed the original IFC into the artifact.
+
 The aim is to give model releases a standard identity and delivery mechanism,
 while using representations suited to their contents. Geometry belongs in a
 geometry format. Entity and property data should remain accessible to analytical
@@ -151,7 +155,7 @@ Additional value forms are explicit:
 | Value form | Meaning |
 | --- | --- |
 | `{"$ref":"uuid"}` | Reference to an exported IFC root's stable ID |
-| `{"$sourceRef":123,"ifcClass":"IfcLocalPlacement"}` | Reference to an unmaterialized source record, scoped by this row's `model_id` |
+| `{"$sourceRef":123,"ifcClass":"IfcLocalPlacement"}` | Source-record reference scoped by this row's `model_id`; the resource graph need not be materialized |
 | `{"$ifcType":"IfcLengthMeasure","value":0.2}` | Typed IFC SELECT value |
 | `{"$nonFinite":"NaN"}` | Non-finite numeric value that JSON cannot represent directly |
 | `{"$integer":"9223372036854775808"}` | Integer outside signed int64 |
@@ -186,8 +190,11 @@ explicit reference slot. Lists and enumerations keep order. Table values use
 `defining` and `defined` roles with corresponding row indices. Bounded values use
 `lower`, `upper` and `setPoint`. Table interpolation, expressions, explicit units,
 descriptions, complex properties and complex quantities have defined fields.
+Complex quantities retain `Discrimination`, `Quality` and `Usage` alongside their children.
 Unsupported property forms retain an explicit attribute representation rather
 than disappearing silently.
+IFC SELECT values retain their declared IFC type. Unwrapped quantity attributes
+carry their primitive value kind; the quantity's IFC class defines the measure.
 
 Property numbers remain in their source IFC units. Explicit units and source
 project units are recorded. Geometry and occurrence translations are converted
@@ -243,12 +250,12 @@ uv run pytest
 
 # Convert one model or all .ifc files in a directory.
 uv run ifcx-oci convert path/to/model.ifc --output build/model
-uv run ifcx-oci convert ~/github/ankerdb/ifz/fixtures/private/sixty5 \
+uv run ifcx-oci convert path/to/sixty5 \
   --output build/sixty5 --shard-mib 8 --threads 4
 uv run ifcx-oci verify build/sixty5
 
 # Resume completed per-file extraction if a corpus run was interrupted.
-uv run ifcx-oci convert ~/github/ankerdb/ifz/fixtures/private/sixty5 \
+uv run ifcx-oci convert path/to/sixty5 \
   --output build/sixty5 --resume
 ```
 
