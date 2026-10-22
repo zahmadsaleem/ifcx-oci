@@ -75,6 +75,10 @@ def main():
             check=True,
         )
     elif args.command == "pull":
+        if args.output.exists() and (
+            not args.output.is_dir() or any(args.output.iterdir())
+        ):
+            parser.error("Pull output must be a new or empty directory")
         flags = (
             ["--oci-layout"]
             if args.oci_layout

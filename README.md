@@ -229,7 +229,7 @@ partition; no global minimum-transfer guarantee is claimed.
 
 Meshes use local coordinates and float32 vertex buffers. The exporter rebases
 vertices before quantization, retains a float64 origin in the GLB node, and
-records the maximum position error in metres. Placements stay float64 in Parquet.
+records the maximum absolute coordinate-component error in metres. Placements stay float64 in Parquet.
 Coordinates are right-handed, Y-up, in metres; IFC's Z-up placement is converted
 consistently. Materials retain diffuse colour, opacity and per-face assignment.
 Textures, procedural geometry, explicit normals and a full material model are
@@ -238,6 +238,8 @@ outside the initial representation.
 The representation table identifies a mesh node within its GLB shard. A consumer
 applies that node's local origin and the occurrence's matrix. A GLB shard is a
 library of reusable meshes; it is not the fully assembled project scene.
+The recorded quantization metric excludes tessellation error and any precision
+loss introduced by a consumer's rendering pipeline.
 
 ## Run with uv
 
@@ -276,6 +278,9 @@ Install [ORAS](https://oras.land/docs/installation/), or set `ORAS_BIN` to an
 existing executable. The CLI verifies the release before publication and after
 pulling. These commands publish model data only when explicitly invoked:
 
+Pull into a new or empty directory so obsolete shards cannot survive a release
+change. `ORAS_CACHE` stores reusable blobs separately from the extracted files.
+
 ```sh
 # An offline OCI layout; its path should be absolute.
 uv run ifcx-oci push build/sixty5 "$PWD/build/sixty5.oci:issued" --oci-layout
@@ -285,6 +290,7 @@ uv run ifcx-oci pull "$PWD/build/sixty5.oci:issued" \
 # A private registry owned by an organization.
 oras login registry.example.com
 uv run ifcx-oci push build/sixty5 registry.example.com/design/sixty5:issued
+export ORAS_CACHE="$PWD/.cache/oras"
 uv run ifcx-oci pull registry.example.com/design/sixty5@sha256:DIGEST \
   --output build/received
 

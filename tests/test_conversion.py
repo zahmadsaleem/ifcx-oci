@@ -9,6 +9,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
+from ifcx_oci.cli import main
 from ifcx_oci.contract import canonical
 from ifcx_oci.release import convert, file_hash, verify
 
@@ -349,3 +350,16 @@ def test_property_reference_must_resolve_even_with_valid_payload_hash(converted)
     (root / "index.json").write_text(canonical(index))
     with pytest.raises(ValueError, match="Unresolved owner reference"):
         verify(root)
+
+
+def test_pull_rejects_nonempty_output_before_running_oras(converted, monkeypatch):
+    _, root = converted
+    before = (root / "index.json").read_bytes()
+    monkeypatch.setattr(
+        "sys.argv",
+        ["ifcx-oci", "pull", "registry.example/model:issued", "--output", str(root)],
+    )
+    with pytest.raises(SystemExit) as error:
+        main()
+    assert error.value.code == 2
+    assert (root / "index.json").read_bytes() == before
