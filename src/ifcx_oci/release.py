@@ -187,6 +187,15 @@ def verify(root):
         if file_hash(path) != item["digest"] or path.stat().st_size != item["size"]:
             raise ValueError("Payload integrity failed: " + str(relative))
         kind = item["role"]
+        if kind in SCHEMAS or kind == "geometry":
+            oversized = item["size"] > index["shardTargetBytes"]
+            if oversized != item["oversized"]:
+                raise ValueError("Incorrect shard size declaration")
+            records = item["meshes"] if kind == "geometry" else item["rows"]
+            if oversized and records != 1:
+                raise ValueError(
+                    "Oversized shards may contain only one indivisible record"
+                )
         if kind == "geometry":
             geometry_files.add(item["path"])
             with path.open("rb") as f:

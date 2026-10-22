@@ -28,13 +28,19 @@ class Extractor:
         self.root_ids = {e.id() for e in model.by_type("IfcRoot")}
         counts = Counter(e.GlobalId for e in model.by_type("IfcRoot"))
         self.duplicate_guids = {key for key, count in counts.items() if count > 1}
+        self.identifiers = {}
         self.property_kinds = {}
 
     def identifier(self, entity):
+        step_id = entity.id()
+        if step_id in self.identifiers:
+            return self.identifiers[step_id]
         key = getattr(entity, "GlobalId", None) or f"step:{entity.id()}"
         if key in self.duplicate_guids:
             key += f":step:{entity.id()}"
-        return str(uuid.uuid5(self.namespace, key))
+        result = str(uuid.uuid5(self.namespace, key))
+        self.identifiers[step_id] = result
+        return result
 
     def value(self, value):
         if isinstance(value, ifcopenshell.entity_instance):
@@ -235,7 +241,9 @@ class Extractor:
         objects = sorted(
             self.model.by_type("IfcRoot"), key=lambda e: self.identifier(e)
         )
-        for entity in objects:
+        for number, entity in enumerate(objects, 1):
+            if number % 10000 == 0:
+                print(f"Metadata: {number:,}/{len(objects):,} IFC roots", flush=True)
             row = {
                 "id": self.identifier(entity),
                 "model_id": self.model_id,
