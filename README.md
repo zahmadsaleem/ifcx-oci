@@ -272,6 +272,8 @@ not part of the release. Extraction failures stop the run; incomplete source
 workers are restarted on resume. Source hashes prevent reuse after source content
 changes. Missing mesh products are reported explicitly in `sources.json` and the
 index; the program does not label incomplete geometry as complete.
+The `.work/` extraction cache can be removed after validation when resume is no
+longer needed.
 
 Generated model data and intermediate files stay under ignored `build/` output.
 The private fixture files are read in place and are never copied into Git.
@@ -325,7 +327,7 @@ import pyarrow.dataset as ds
 entities = ds.dataset("build/sixty5/entities", format="parquet")
 walls = entities.to_table(
     columns=["id", "attributes", "type_id", "geometry_id"],
-    filter=ds.field("ifc_class") == "IfcWall",
+    filter=ds.field("ifc_class").isin(["IfcWall", "IfcWallStandardCase"]),
 )
 for row in walls.to_pylist():
     print(row["id"], json.loads(row["attributes"]).get("Name"))
@@ -335,6 +337,45 @@ The JSON attribute column prioritizes a simple extensible entity contract. It
 does not offer the same column pruning and statistics for each attribute as
 dedicated Parquet columns. Frequently queried attributes can be promoted into
 explicit columns in a later profile while retaining the original attribute map.
+
+## Prototype validation
+
+A local run uses eight private IFC2X3 fixtures totalling **808.49 MiB** of STEP
+data. The fixture contents and generated artifacts are excluded from Git.
+
+| Layer | Records | Files | Payload MiB |
+| --- | ---: | ---: | ---: |
+| Shared types | 1,639 | 1 | 0.32 |
+| Geometry | 21,004 meshes | 46 | 67.74 |
+| Entities | 1,541,393 | 256 | 170.40 |
+| Properties | 4,924,350 | 256 | 444.89 |
+| Relationship endpoints | 1,882,450 | 256 | 155.73 |
+| Representation index | 21,004 | 1 | 0.57 |
+| Schema and provenance | — | 2 | 0.04 |
+
+The **818 payload files total 839.69 MiB**, with another 0.17 MiB for the release
+index. The payload is 3.86% larger than the source STEP data. This baseline
+includes compiled triangle meshes, owner-specific property expansion and readable
+string identifiers. These figures describe this derived profile and its stated
+preservation limits; encoding comparisons need equivalent information requirements.
+The largest shard is **4.72 MiB**; no indivisible records exceed the 8 MiB target.
+
+Of 81,466 products with representations, 81,444 produce meshes. The report
+identifies **20 grids and two walls without meshes**. Their entity metadata is
+retained. Maximum recorded absolute coordinate-component quantization error is
+0.953 micrometres, excluding tessellation and consumer rendering error.
+
+All 46 final GLB shards pass the Khronos glTF validator with **zero errors and
+zero warnings**. Nine automated tests cover nested and typed values, complex
+numbers and quantities, sharing and placement, deterministic sharding, resume,
+integrity failures and safe pull destinations. The Parquet query above returns
+8,078 walls from the real corpus.
+
+The full release also passes an ORAS push → copy → pull test through two local
+OCI registries. Copying preserves the manifest digest; repeating the copy finds
+the artifact already present. The pinned pull passes payload integrity, schema
+and **2,706,866 reference-target checks**. ORAS caching is enabled for the pull.
+All model publication in this validation stays on loopback registries.
 
 ## Code structure
 
