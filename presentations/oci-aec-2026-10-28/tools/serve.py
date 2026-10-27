@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Serve the canonical pitch on loopback without stale browser caching."""
+"""Serve the local pitch without caching old slide content."""
 import argparse
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
 
-class PreviewHandler(SimpleHTTPRequestHandler):
+
+class NoCacheHandler(SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
         self.send_header("Pragma", "no-cache")
@@ -18,10 +20,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8768)
     options = parser.parse_args()
-    handler = partial(PreviewHandler, directory=str(Path(__file__).resolve().parent))
+    handler = partial(NoCacheHandler, directory=str(ROOT))
     with ThreadingHTTPServer(("127.0.0.1", options.port), handler) as server:
         print(f"Pitch: http://127.0.0.1:{server.server_port}/preview.html", flush=True)
-        try:
-            server.serve_forever()
-        except KeyboardInterrupt:
-            pass
+        server.serve_forever()

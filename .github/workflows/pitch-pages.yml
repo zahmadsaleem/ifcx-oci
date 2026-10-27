@@ -1,0 +1,41 @@
+name: Publish Pitch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - presentations/oci-aec-2026-10-28/**
+      - .github/workflows/pitch-pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pitch-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Validate and prepare public pitch
+        run: python3 presentations/oci-aec-2026-10-28/tools/prepare_site.py --output build/pitch-site
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload public pitch only
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: build/pitch-site
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
