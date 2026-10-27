@@ -1,10 +1,12 @@
-.venv/
 .tools/
 build/
 .cache/
-__pycache__/
-.pytest_cache/
-*.egg-info/
+target/
+result
+result-*
+.direnv/
 *.ifc
 *.ifczip
 *.sqlite*
+signing.key
+client-auth.json

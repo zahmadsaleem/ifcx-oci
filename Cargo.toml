@@ -1,0 +1,35 @@
+[package]
+name = "ifcx-oci"
+version = "0.2.0"
+edition = "2021"
+description = "Experimental IFC artifact producer, OCI client and local registry"
+
+[dependencies]
+anyhow = "1"
+argon2 = "0.5"
+arrow-array = "60"
+arrow-schema = "60"
+axum = "0.8"
+bytes = "1"
+base64 = "0.22"
+clap = { version = "4", features = ["derive"] }
+hex = "0.4"
+jsonwebtoken = { version = "10", features = ["rust_crypto"] }
+ifc-lite-core = { git = "https://github.com/LTplus-AG/ifc-lite", rev = "9d154898de31fe91eb46f0200f2b3634c8c592f1" }
+ifc-lite-processing = { git = "https://github.com/LTplus-AG/ifc-lite", rev = "9d154898de31fe91eb46f0200f2b3634c8c592f1" }
+ifc-lite-export = { git = "https://github.com/LTplus-AG/ifc-lite", rev = "9d154898de31fe91eb46f0200f2b3634c8c592f1", default-features = false }
+parquet = { version = "60", default-features = false, features = ["arrow", "zstd"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+rpassword = "7"
+rusqlite = { version = "0.38", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time"] }
+uuid = { version = "1", features = ["v4"] }
+
+[profile.release]
+lto = "thin"
+strip = true
