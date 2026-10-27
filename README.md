@@ -2,6 +2,8 @@
 
 **Share an IFC model release between tools and organizations through a common registry.**
 
+[View the pitch on GitHub Pages](https://madsolame.com/ifcx-oci/).
+
 Think of a registry as a company's data reservoir. Models, requirements, drawings
 and other kinds of data can each have their own tank. Different applications can
 connect to that reservoir, use the data they understand, and publish new results.
