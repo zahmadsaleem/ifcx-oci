@@ -103,6 +103,9 @@ def validate_bundle(root):
     assert "<title>Notes · Pitch</title>" in notes and "<h1>Notes</h1>" in notes
     assert 'id="deck-label"' not in index and "AEC / COMMON GROUND" not in index
     assert 'href="speaker-notes.html"' in index and 'href="index.html"' in notes
+    assert 'An invitation to collaborate' in sections[-1]
+    assert 'Invite tool builders and AEC teams to explore OCI' in sections[-1]
+    assert 'Independent AEC tools · Shared model delivery' in notes
     links = set()
     for name in ("index.html", "speaker-notes.html", "preview.html"):
         markup = (root / name).read_text()
@@ -120,7 +123,10 @@ def validate_bundle(root):
             links.add(local)
     for name in ("sources.json", "oci-ifcx-manifest.example.json", "ifcx-profile-config.example.json"):
         json.loads((root / name).read_text())
-    assert json.loads((root / "sources.json").read_text())["presented_slides"] == 15
+    sources = json.loads((root / "sources.json").read_text())
+    assert sources["presented_slides"] == 15
+    assert sources["audience"] == "AEC tool builders and teams"
+    assert "verified_person" not in sources
     for name in PUBLIC_FILES:
         if name.endswith(".png"):
             assert (root / name).read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
