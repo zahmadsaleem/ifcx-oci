@@ -131,5 +131,6 @@ The bundled registry is for local use on your computer. A shared team service
 needs an appropriately operated registry. Build instructions, format details,
 security and deployment limits are in [DEVELOPMENT.md](DEVELOPMENT.md).
 
-The [presentation](presentations/oci-aec-2026-10-28/index.html) explains the wider
-shared-registry idea visually.
+## License
+
+Licensed under the [Apache License 2.0](LICENSE).

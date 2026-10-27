@@ -1,0 +1,33 @@
+{
+  "profile": "https://example.org/profiles/ifcx-release/v1",
+  "modelId": "architecture-model",
+  "exampleOnly": true,
+  "payloads": [
+    {
+      "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "role": "entities",
+      "required": true
+    },
+    {
+      "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "role": "semantic-context",
+      "required": true
+    },
+    {
+      "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "role": "geometry",
+      "required": false
+    },
+    {
+      "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "role": "supporting-document",
+      "required": false
+    },
+    {
+      "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "role": "specialist-extension",
+      "required": false
+    }
+  ],
+  "semantics": "The proposed profile must define IFCX mappings, shared IDs, units, schema and composition rules."
+}

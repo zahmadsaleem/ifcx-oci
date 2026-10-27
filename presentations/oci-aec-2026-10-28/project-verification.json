@@ -1,0 +1,596 @@
+{
+  "checked": "2026-10-27",
+  "engine": "Codex in-app browser through CUA",
+  "slideCount": 15,
+  "layout": [
+    {
+      "bodyOverlapsFooter": false,
+      "brandPresent": false,
+      "clip": {
+        "height": 540,
+        "width": 960,
+        "x": 0,
+        "y": 193
+      },
+      "documentTitle": "1/15 · Why IFClite feels approachable. · Pitch",
+      "footer": "Saleem · AnkerDBS1 S2IFCLite x Open CDE Proposal",
+      "footerLabel": "IFCLite x Open CDE Proposal",
+      "id": "slide-1",
+      "nextDisabled": false,
+      "notesPresent": true,
+      "position": "01 / 15",
+      "sections": 15,
+      "svgTextOutsideViewBox": [],
+      "title": "Why IFClite feels approachable."
+    },
+    {
+      "bodyOverlapsFooter": false,
+      "brandPresent": false,
+      "clip": {
+        "height": 540,
+        "width": 960,
+        "x": 0,
+        "y": 193
+      },
+      "connectorLabels": [
+        "Connector 1",
+        "Connector 2",
+        "Connector 3",
+        "Connector 4",
+        "Connector 5",
+        "Connector 6"
+      ],
+      "countLabel": "2 apps × 3 destinations = 6 connectors",
+      "documentTitle": "2/15 · Every new connection takes work. · Pitch",
+      "footer": "Saleem · AnkerDB\nS5\nIFCLite x Open CDE Proposal",
+      "footerLabel": "IFCLite x Open CDE Proposal",
+      "id": "slide-2",
+      "nextDisabled": false,
+      "notesPresent": true,
+      "position": "02 / 15",
+      "sections": 15,
+      "svgTextOutsideViewBox": [],
+      "title": "Every new connection takes work.",
+      "url": "http://127.0.0.1:8768/index.html?preview=1793141298582#slide-2"
+    },
+    {
+      "bodyOverlapsFooter": false,
+      "brandPresent": false,
+      "clip": {
+        "height": 540,
+        "width": 960,
+        "x": 0,
+        "y": 193
+      },
+      "documentTitle": "3/15 · Integrate once to a common agreement. · Pitch",
+      "footer": "Saleem · AnkerDBS6 S7IFCLite x Open CDE Proposal",
+      "footerLabel": "IFCLite x Open CDE Proposal",
+      "id": "slide-3",
+      "nextDisabled": false,
+      "notesPresent": true,
+      "position": "03 / 15",
+      "sections": 15,
+      "svgTextOutsideViewBox": [],
+      "title": "Integrate once to a common agreement."
+    },
+    {
+      "bodyOverlapsFooter": false,
+      "brandPresent": false,
+      "clip": {
+        "height": 540,
+        "width": 960,
+        "x": 0,
+        "y": 193
+      },
+      "documentTitle": "4/15 · Each company owns its reservoir. · Pitch",
+      "footer": "Saleem · AnkerDBS7 S8 S10 S12 S13IFCLite x Open CDE Proposal",
+      "footerLabel": "IFCLite x Open CDE Proposal",
+      "id": "slide-4",
+      "nextDisabled": false,
+      "notesPresent": true,
+      "position": "04 / 15",
+      "sections": 15,
+      "svgTextOutsideViewBox": [],
+      "title": "Each company owns its reservoir."
+    },
+    {
+      "bodyOverlapsFooter": false,
+      "brandPresent": false,
+      "clip": {
+        "height": 540,
+        "width": 960,
+        "x": 0,
+        "y": 193
+      },
+      "documentTitle": "5/15 · Many focused apps. One shared release. · Pitch",
+      "footer": "Saleem · AnkerDBS12 S13IFCLite x Open CDE Proposal",
+      "footerLabel": "IFCLite x Open CDE Proposal",
+      "id": "slide-5",
+      "nextDisabled": false,
+      "notesPresent": true,
+      "position": "05 / 15",
+      "sections": 15,
+      "svgTextOutsideViewBox": [],
+      "title": "Many focused apps. One shared release."
+    },
+    {
+      "bodyOverlapsFooter": false,
+      "brandPresent": false,
+      "clip": {
+        "height": 540,
+        "width": 960,
+        "x": 0,
+        "y": 193
+      },
+      "documentTitle": "6/15 · Compatible connections. Independent owners. · Pitch",
+      "footer": "Saleem · AnkerDBS7 S8 S9 S10 S12 S13IFCLite x Open CDE Proposal",
+      "footerLabel": "IFCLite x Open CDE Proposal",
+      "id": "slide-6",
+      "nextDisabled": false,
+      "notesPresent": true,
+      "position": "06 / 15",
+      "sections": 15,
+      "svgTextOutsideViewBox": [],
+      "title": "Compatible connections. Independent owners."
+    },
+    {
+      "bodyOverlapsFooter": false,
+      "brandPresent": false,
+      "clip": {
+        "height": 540,
+        "width": 960,
+        "x": 0,
+        "y": 193
+      },
+      "documentTitle": "7/15 · Start with the IFC file we already have. · Pitch",
+      "footer": "Saleem · AnkerDBS6 S8 S11IFCLite x Open CDE Proposal",
+      "footerLabel": "IFCLite x Open CDE Proposal",
+      "id": "slide-7",
+      "nextDisabled": false,
+      "notesPresent": true,
+      "position": "07 / 15",
+      "sections": 15,
+      "svgTextOutsideViewBox": [],
+      "title": "Start with the IFC file we already have."
+    },
+    {
+      "bodyOverlapsFooter": false,
+      "brandPresent": false,
+      "clip": {
+        "height": 540,
+        "width": 960,
+        "x": 0,
+        "y": 193
+      },
+      "documentTitle": "8/15 · An IFCX release, carried as an OCI artifact. · Pitch",
+      "footer": "Saleem · AnkerDBS6 S20 S21 S22 S23IFCLite x Open CDE Proposal",
+      "footerLabel": "IFCLite x Open CDE Proposal",
+      "id": "slide-8",
+      "nextDisabled": false,
+      "notesPresent": true,
+      "position": "08 / 15",
+      "sections": 15,
+      "svgTextOutsideViewBox": [],
+      "title": "An IFCX release, carried as an OCI artifact."
+    },
+    {
+      "bodyOverlapsFooter": false,
+      "brandPresent": false,
+      "clip": {
+        "height": 540,
+        "width": 960,
+        "x": 0,
+        "y": 193
+      },
+      "documentTitle": "9/15 · One interface. Many ways to run it. · Pitch",
+      "footer": "Saleem · AnkerDBS6 S14 S16 S17IFCLite x Open CDE Proposal",
+      "footerLabel": "IFCLite x Open CDE Proposal",
+      "id": "slide-9",
+      "nextDisabled": false,
+      "notesPresent": true,
+      "position": "09 / 15",
+      "sections": 15,
+      "svgTextOutsideViewBox": [],
+      "title": "One interface. Many ways to run it."
+    },
+    {
+      "bodyOverlapsFooter": false,
+      "brandPresent": false,
+      "clip": {
+        "height": 540,
+        "width": 960,
+        "x": 0,
+        "y": 193
+      },
+      "documentTitle": "10/15 · Know exactly which release you received. · Pitch",
+      "footer": "Saleem · AnkerDBS6 S7 S11IFCLite x Open CDE Proposal",
+      "footerLabel": "IFCLite x Open CDE Proposal",
+      "id": "slide-10",
+      "nextDisabled": false,
+      "notesPresent": true,
+      "position": "10 / 15",
+      "sections": 15,
+      "svgTextOutsideViewBox": [],
+      "title": "Know exactly which release you received."
+    },
+    {
+      "bodyOverlapsFooter": false,
+      "brandPresent": false,
+      "clip": {
+        "height": 540,
+        "width": 960,
+        "x": 0,
+        "y": 193
+      },
+      "documentTitle": "11/15 · Changes deserve their own artifacts. · Pitch",
+      "footer": "Saleem · AnkerDBS18 S6 S7 S20IFCLite x Open CDE Proposal",
+      "footerLabel": "IFCLite x Open CDE Proposal",
+      "id": "slide-11",
+      "nextDisabled": false,
+      "notesPresent": true,
+      "position": "11 / 15",
+      "sections": 15,
+      "svgTextOutsideViewBox": [],
+      "title": "Changes deserve their own artifacts."
+    },
+    {
+      "bodyOverlapsFooter": false,
+      "brandPresent": false,
+      "clip": {
+        "height": 540,
+        "width": 960,
+        "x": 0,
+        "y": 193
+      },
+      "documentTitle": "12/15 · Agree on the contract. Let tools evolve. · Pitch",
+      "footer": "Saleem · AnkerDBS18 S19 S6IFCLite x Open CDE Proposal",
+      "footerLabel": "IFCLite x Open CDE Proposal",
+      "id": "slide-12",
+      "nextDisabled": false,
+      "notesPresent": true,
+      "position": "12 / 15",
+      "sections": 15,
+      "svgTextOutsideViewBox": [],
+      "title": "Agree on the contract. Let tools evolve."
+    },
+    {
+      "bodyOverlapsFooter": false,
+      "brandPresent": false,
+      "clip": {
+        "height": 540,
+        "width": 960,
+        "x": 0,
+        "y": 193
+      },
+      "documentTitle": "13/15 · One small agreement. Two independent tools. · Pitch",
+      "footer": "Saleem · AnkerDBS6 S7 S9 S18IFCLite x Open CDE Proposal",
+      "footerLabel": "IFCLite x Open CDE Proposal",
+      "id": "slide-13",
+      "nextDisabled": false,
+      "notesPresent": true,
+      "position": "13 / 15",
+      "sections": 15,
+      "svgTextOutsideViewBox": [],
+      "title": "One small agreement. Two independent tools."
+    },
+    {
+      "bodyOverlapsFooter": false,
+      "brandPresent": false,
+      "clip": {
+        "height": 540,
+        "width": 960,
+        "x": 0,
+        "y": 193
+      },
+      "documentTitle": "14/15 · The delivery path has a prototype. · Pitch",
+      "footer": "Saleem · AnkerDBS11 S14 S15IFCLite x Open CDE Proposal",
+      "footerLabel": "IFCLite x Open CDE Proposal",
+      "id": "slide-14",
+      "nextDisabled": false,
+      "notesPresent": true,
+      "position": "14 / 15",
+      "sections": 15,
+      "svgTextOutsideViewBox": [],
+      "title": "The delivery path has a prototype."
+    },
+    {
+      "bodyOverlapsFooter": false,
+      "brandPresent": false,
+      "clip": {
+        "height": 540,
+        "width": 960,
+        "x": 0,
+        "y": 193
+      },
+      "documentTitle": "15/15 · Could OCI become common ground? · Pitch",
+      "footer": "Saleem · AnkerDBS12 S13IFCLite x Open CDE Proposal",
+      "footerLabel": "IFCLite x Open CDE Proposal",
+      "id": "slide-15",
+      "nextDisabled": true,
+      "notesPresent": true,
+      "position": "15 / 15",
+      "sections": 15,
+      "svgTextOutsideViewBox": [],
+      "title": "Could OCI become common ground?"
+    }
+  ],
+  "navigation": {
+    "first": "01 / 15",
+    "last": "15 / 15",
+    "finalNextDisabled": true,
+    "visitedEverySlideInOrder": true
+  },
+  "pitchTitle": true,
+  "notesLabel": true,
+  "footerBrandRemoved": true,
+  "footerDateRemoved": true,
+  "footerLabel": "IFCLite x Open CDE Proposal",
+  "closingInvitationDistinct": true,
+  "sourceFilesMatch": true,
+  "sourceFileCount": 20,
+  "sourceIndexSha256": "8fc2256fd8cc660d228278d05fab244f5843fa8bea6b23213bf209a34112feaa",
+  "projectIndexSha256": "8fc2256fd8cc660d228278d05fab244f5843fa8bea6b23213bf209a34112feaa",
+  "preservedSlideBodiesExceptFooter": [
+    1,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14
+  ],
+  "preservedStandaloneNotes": [
+    1,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14
+  ],
+  "notesOverlay": {
+    "label": "Notes",
+    "paragraphs": 3,
+    "tankReference": false,
+    "title": "15. Could OCI become common ground?"
+  },
+  "notesPage": {
+    "articles": 15,
+    "finalParagraphs": 4,
+    "finalTankReference": false,
+    "heading": "Notes",
+    "link": "index.html",
+    "speakerNotesLabel": false,
+    "title": "Notes · Pitch"
+  },
+  "freshPreview": {
+    "bodyOverlapsFooter": false,
+    "brandPresent": false,
+    "clip": {
+      "height": 540,
+      "width": 960,
+      "x": 0,
+      "y": 193
+    },
+    "connectorLabels": [
+      "Connector 1",
+      "Connector 2",
+      "Connector 3",
+      "Connector 4",
+      "Connector 5",
+      "Connector 6"
+    ],
+    "countLabel": "2 apps × 3 destinations = 6 connectors",
+    "documentTitle": "2/15 · Every new connection takes work. · Pitch",
+    "footer": "Saleem · AnkerDB\nS5\nIFCLite x Open CDE Proposal",
+    "footerLabel": "IFCLite x Open CDE Proposal",
+    "id": "slide-2",
+    "nextDisabled": false,
+    "notesPresent": true,
+    "position": "02 / 15",
+    "sections": 15,
+    "svgTextOutsideViewBox": [],
+    "title": "Every new connection takes work.",
+    "url": "http://127.0.0.1:8768/index.html?preview=1793141298582#slide-2"
+  },
+  "localLinksResolve": true,
+  "http": {
+    "index.html": {
+      "status": 200,
+      "cacheControl": "no-store, no-cache, must-revalidate, max-age=0",
+      "matchesDisk": true
+    },
+    "speaker-notes.html": {
+      "status": 200,
+      "cacheControl": "no-store, no-cache, must-revalidate, max-age=0",
+      "matchesDisk": true
+    },
+    "preview.html": {
+      "status": 200,
+      "cacheControl": "no-store, no-cache, must-revalidate, max-age=0",
+      "matchesDisk": true
+    },
+    "preview.png": {
+      "status": 200,
+      "cacheControl": "no-store, no-cache, must-revalidate, max-age=0",
+      "matchesDisk": true
+    },
+    "previews/slide-02.png": {
+      "status": 200,
+      "cacheControl": "no-store, no-cache, must-revalidate, max-age=0",
+      "matchesDisk": true
+    },
+    "oci-ifcx-manifest.example.json": {
+      "status": 200,
+      "cacheControl": "no-store, no-cache, must-revalidate, max-age=0",
+      "matchesDisk": true
+    },
+    "ifcx-profile-config.example.json": {
+      "status": 200,
+      "cacheControl": "no-store, no-cache, must-revalidate, max-age=0",
+      "matchesDisk": true
+    }
+  },
+  "previewCount": 15,
+  "previewHashes": {
+    "previews/slide-01.png": "d42b2555d141cbecebf54d86154e94883d4cd380ac606523c9773d9d7d42bc34",
+    "previews/slide-02.png": "31d7a5026818155430f0c473905912cf6d511f06447b1613be5d200a141a0848",
+    "previews/slide-03.png": "f6a0f2fefeec654d6d3ed7f67afbaca1a70fff8b3a2c760c016035ac7f28a1ae",
+    "previews/slide-04.png": "538952ce51c9c2ff5e031153c0984a1197e0b80be6c1895cb0687665280268ec",
+    "previews/slide-05.png": "3f07c45e07aaae7c0fb3c5a5b5c70282bd2d2e041631577f39248701d49934e3",
+    "previews/slide-06.png": "9c661ccb6b2b0e0ec7bff1a2c5805c143e7360393370fa7ef03a2f9fcccdbe2c",
+    "previews/slide-07.png": "0ad1a61284321da028773b7962b8712356e67b658c50cfe97d4b99fb14298c32",
+    "previews/slide-08.png": "8544b380b65edc6419364d72695c842a81f5238dd540879579a30697fb130e0e",
+    "previews/slide-09.png": "49d897e6756df4f8b4a4bb5e13d4de32c8bf75e297543fe4542abccc213cf50d",
+    "previews/slide-10.png": "335e4e4c113b06f83ac037245db17153aee5f60135bbd7763e740e3507b17a11",
+    "previews/slide-11.png": "b7ab158235bb892f75819019a679583507fa4064303a480c8da678c20ca099aa",
+    "previews/slide-12.png": "cde31bdc43fbe3514184f978544483c01165290642d4f8e9cd2fc89b494aaa64",
+    "previews/slide-13.png": "55935d96bbb41f2fd007ffaf8b9081b6c2bb5da6a5598cf0040fff564d8ec6e1",
+    "previews/slide-14.png": "d1b870fcc1d9a195c924178ccf880dd1250875e34b8aff8b101759adac00c7be",
+    "previews/slide-15.png": "b6448ed81fae85688d6c163a796ff214bca088639f9a03c6de06fa24799c75d7",
+    "preview.png": "8b753e1fd2cfd48dbd6b666046bc742a925daee649d5a14375b645f5a91ac0b5"
+  },
+  "browserErrors": [],
+  "slideTitles": [
+    "Why IFClite feels approachable.",
+    "Every new connection takes work.",
+    "Integrate once to a common agreement.",
+    "Each company owns its reservoir.",
+    "Many focused apps. One shared release.",
+    "Compatible connections. Independent owners.",
+    "Start with the IFC file we already have.",
+    "An IFCX release, carried as an OCI artifact.",
+    "One interface. Many ways to run it.",
+    "Know exactly which release you received.",
+    "Changes deserve their own artifacts.",
+    "Agree on the contract. Let tools evolve.",
+    "One small agreement. Two independent tools.",
+    "The delivery path has a prototype.",
+    "Could OCI become common ground?"
+  ],
+  "slide2ClarityUpdate": {
+    "title": "Every new connection takes work.",
+    "unchangedSlides": [
+      1,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15
+    ],
+    "unchangedNotes": [
+      1,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15
+    ],
+    "unchangedPreviewImages": 14,
+    "refreshedPreviewImages": [
+      2
+    ],
+    "overviewRefreshed": true,
+    "notesMatch": true,
+    "browser": {
+      "slide": {
+        "bodyOverlapsFooter": false,
+        "brandPresent": false,
+        "clip": {
+          "height": 540,
+          "width": 960,
+          "x": 0,
+          "y": 193
+        },
+        "connectorLabels": [
+          "Connector 1",
+          "Connector 2",
+          "Connector 3",
+          "Connector 4",
+          "Connector 5",
+          "Connector 6"
+        ],
+        "countLabel": "2 apps × 3 destinations = 6 connectors",
+        "documentTitle": "2/15 · Every new connection takes work. · Pitch",
+        "footer": "Saleem · AnkerDB\nS5\nIFCLite x Open CDE Proposal",
+        "footerLabel": "IFCLite x Open CDE Proposal",
+        "id": "slide-2",
+        "nextDisabled": false,
+        "notesPresent": true,
+        "position": "02 / 15",
+        "sections": 15,
+        "svgTextOutsideViewBox": [],
+        "title": "Every new connection takes work.",
+        "url": "http://127.0.0.1:8768/index.html?preview=1793141298582#slide-2"
+      },
+      "notesOverlay": {
+        "label": "Notes",
+        "paragraphs": [
+          "Imagine a design team using a model viewer and a cost team using a specialist cost tool. Their models are stored in two cloud CDEs and on a local server. In this example, the viewer needs three delivery connectors. Adding the cost tool brings three more. Each coral box is one connection a tool builder or integration team has to support.",
+          "A connector may need to handle a different API, sign-in and permission rules, file packaging and release conventions. Adding another app repeats this work across the destinations it needs; adding another destination creates work for the apps that need it. Existing standards and reusable libraries can help, so the amount of custom work varies.",
+          "This is a conceptual example using generic apps and storage services. It does not depict an existing IFClite–AnkerDB integration. The proposal on the next slide is to share the delivery interface and the AEC package agreement, while each organization still controls access and each app supports the model data it understands."
+        ],
+        "title": "2. Every new connection takes work."
+      },
+      "notesPage": {
+        "articles": 15,
+        "heading": "Notes",
+        "noteTitle": "Every new connection takes work.",
+        "paragraphs": [
+          "Imagine a design team using a model viewer and a cost team using a specialist cost tool. Their models are stored in two cloud CDEs and on a local server. In this example, the viewer needs three delivery connectors. Adding the cost tool brings three more. Each coral box is one connection a tool builder or integration team has to support.",
+          "A connector may need to handle a different API, sign-in and permission rules, file packaging and release conventions. Adding another app repeats this work across the destinations it needs; adding another destination creates work for the apps that need it. Existing standards and reusable libraries can help, so the amount of custom work varies.",
+          "This is a conceptual example using generic apps and storage services. It does not depict an existing IFClite–AnkerDB integration. The proposal on the next slide is to share the delivery interface and the AEC package agreement, while each organization still controls access and each app supports the model data it understands."
+        ],
+        "title": "Notes · Pitch"
+      }
+    },
+    "navigation": {
+      "method": "Arrow keys",
+      "next": {
+        "id": "slide-3",
+        "position": "03 / 15",
+        "title": "Integrate once to a common agreement."
+      },
+      "return": {
+        "id": "slide-2",
+        "notesOpen": false,
+        "position": "02 / 15",
+        "title": "Every new connection takes work."
+      },
+      "browserErrors": []
+    }
+  },
+  "formattingCleanup": {
+    "trailingWhitespaceLinesRemoved": 6,
+    "renderedContentUnchanged": true,
+    "existingBrowserPreviewsRetained": true
+  }
+}

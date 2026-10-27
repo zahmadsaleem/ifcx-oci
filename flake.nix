@@ -15,7 +15,7 @@
             filter = path: type:
               let
                 relative = pkgs.lib.removePrefix ((toString ./.) + "/") (toString path);
-              in (toString path) == (toString ./.) || builtins.elem relative [ "Cargo.toml" "Cargo.lock" "src" "tests" ]
+              in (toString path) == (toString ./.) || builtins.elem relative [ "Cargo.toml" "Cargo.lock" "LICENSE" "src" "tests" ]
                  || pkgs.lib.hasPrefix "src/" relative || pkgs.lib.hasPrefix "tests/" relative;
           };
           cargoLock = {
@@ -26,6 +26,7 @@
           # Networked integration tests run explicitly through the demo app.
           cargoTestFlags = [ "--lib" ];
           meta.mainProgram = "ifcx-oci";
+          meta.license = pkgs.lib.licenses.asl20;
         };
     in {
       packages = eachSystem (system: { default = packageFor system; });

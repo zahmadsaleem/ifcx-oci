@@ -3,6 +3,7 @@ name = "ifcx-oci"
 version = "0.2.0"
 edition = "2021"
 description = "Experimental IFC artifact producer, OCI client and local registry"
+license = "Apache-2.0"
 
 [dependencies]
 anyhow = "1"

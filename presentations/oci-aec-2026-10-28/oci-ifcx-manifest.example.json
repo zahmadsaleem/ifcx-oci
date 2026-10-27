@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 2,
+  "mediaType": "application/vnd.oci.image.manifest.v1+json",
+  "artifactType": "application/vnd.example.ifcx.v1",
+  "config": {
+    "mediaType": "application/vnd.example.ifcx.config.v1+json",
+    "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "size": 512
+  },
+  "layers": [
+    {
+      "mediaType": "application/vnd.apache.parquet",
+      "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "size": 8200,
+      "annotations": {
+        "org.opencontainers.image.title": "entities.parquet"
+      }
+    },
+    {
+      "mediaType": "application/ld+json",
+      "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "size": 1800,
+      "annotations": {
+        "org.opencontainers.image.title": "semantics.jsonld"
+      }
+    },
+    {
+      "mediaType": "model/gltf-binary",
+      "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "size": 49000,
+      "annotations": {
+        "org.opencontainers.image.title": "geometry.glb"
+      }
+    },
+    {
+      "mediaType": "application/pdf",
+      "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "size": 24000,
+      "annotations": {
+        "org.opencontainers.image.title": "delivery-note.pdf"
+      }
+    },
+    {
+      "mediaType": "application/vnd.example.custom",
+      "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "size": 4096,
+      "annotations": {
+        "org.opencontainers.image.title": "specialist.custom"
+      }
+    }
+  ],
+  "annotations": {
+    "org.opencontainers.image.description": "Illustrative documentation example: proposed profile, fictitious hashes and sizes, no payload bundle."
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "slides": 15,
+  "new_slides": [
+    8,
+    11,
+    12,
+    13
+  ],
+  "speaker_notes": 15,
+  "source_count": 21,
+  "checks": {
+    "unique_ids": true,
+    "numbering_and_heading_links": true,
+    "notes_for_every_slide": true,
+    "svg_xml": true,
+    "self_contained_runtime": true,
+    "original_conclusion_retained": true,
+    "navigation_syntax": true,
+    "measured_new_slide_text_fit": true,
+    "illustrative_json_parses": true,
+    "descriptor_fields_present": true,
+    "new_oci_ifcx_slide_number": 8,
+    "new_json_panel_text_fit": true
+  },
+  "rendered_browser_check": "All 15 slide layouts were previously verified in the synchronized project mirror. The revised slide 2 was checked again through the Codex in-app browser: six distinct connectors, no text overflow or footer overlap, working cache-safe preview, and matching embedded/standalone Notes. The other 14 slide bodies and Notes are byte-identical to the pre-edit version.",
+  "source_snapshot_sha256": "e0e343efe25c2b8c84dd59da8dc163de592e29dff40990892f072540e45e383e",
+  "vector_previews": "Slides 8, 11, 12 and 13 rasterized from authored SVG for visual review; not browser screenshots.",
+  "editorial_update": {
+    "pitch_title": "Pitch",
+    "notes_title": "Notes",
+    "persistent_brand_removed": true,
+    "footer_label": "IFCLite x Open CDE Proposal",
+    "footer_date_removed": true,
+    "closing_slide_distinct": true,
+    "other_slide_bodies_and_notes_preserved": [
+      1,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14
+    ]
+  },
+  "slide_2_clarity_update": {
+    "title": "Every new connection takes work.",
+    "concept": "Two apps and three storage destinations; six separately marked connectors.",
+    "other_14_slides_byte_identical": true,
+    "embedded_and_standalone_notes_match": true,
+    "removed": "Dashed app mesh and download/zip/email strip",
+    "browser_checked": true,
+    "text_fit": true,
+    "notes_match": true,
+    "footer_label": "IFCLite x Open CDE Proposal"
+  },
+  "formatting_cleanup": {
+    "trailing_whitespace_lines_removed": 6,
+    "rendered_content_unchanged": true,
+    "existing_browser_previews_retained": true
+  }
+}

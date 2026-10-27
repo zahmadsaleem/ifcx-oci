@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Pitch preview</title>
+<script>
+const deck = new URL('index.html', location.href);
+deck.searchParams.set('preview', String(Date.now()));
+deck.hash = location.hash;
+location.replace(deck);
+</script>
+<noscript><a href="index.html">Open the pitch</a></noscript></html>

@@ -1,0 +1,136 @@
+{
+  "checked": "2026-10-27",
+  "presented_slides": 15,
+  "verified_product": "AnkerDB",
+  "prototype_commit": "be6e08146eb7336fe5c061d58280188a1011c1c9",
+  "sources": [
+    {
+      "id": "S1",
+      "title": "IFClite — official product site",
+      "url": "https://ifclite.dev/",
+      "supports": "Browser viewer with local file loading; modular toolkit. These are product claims, not independently benchmarked here."
+    },
+    {
+      "id": "S2",
+      "title": "IFClite — official source repository",
+      "url": "https://github.com/LTplus-AG/ifc-lite",
+      "supports": "Open-source toolkit and modular packages; browser, SDK and CLI capabilities."
+    },
+    {
+      "id": "S5",
+      "title": "AnkerDB — About",
+      "url": "https://ankerdb.com/about",
+      "supports": "Public product name and BIM information / delivery workflow positioning."
+    },
+    {
+      "id": "S6",
+      "title": "OCI Image Specification 1.1.1 — artifact usage",
+      "url": "https://github.com/opencontainers/image-spec/blob/v1.1.1/manifest.md#guidelines-for-artifact-usage",
+      "supports": "OCI manifests may package content other than container images; typed payload descriptors."
+    },
+    {
+      "id": "S7",
+      "title": "OCI Distribution Specification 1.1.1",
+      "url": "https://github.com/opencontainers/distribution-spec/blob/v1.1.1/spec.md",
+      "supports": "Registry push/pull interfaces, manifests, blobs and digest verification. Domain semantics remain a separate agreement."
+    },
+    {
+      "id": "S8",
+      "title": "ORAS — pushing and pulling artifacts",
+      "url": "https://oras.land/docs/how_to_guides/pushing_and_pulling/",
+      "supports": "Single-file and multiple-file artifact transfer, including local registry examples."
+    },
+    {
+      "id": "S9",
+      "title": "ORAS — copy artifacts between registries",
+      "url": "https://oras.land/docs/commands/oras_cp/",
+      "supports": "Explicit registry-to-registry copy and OCI layout transfer; not automatic synchronization."
+    },
+    {
+      "id": "S10",
+      "title": "ORAS — registry authentication",
+      "url": "https://oras.land/docs/commands/oras_login/",
+      "supports": "Login and authentication still form part of registry deployment and use."
+    },
+    {
+      "id": "S11",
+      "title": "ifcx-oci — local prototype README",
+      "url": "https://github.com/zahmadsaleem/ifcx-oci/blob/be6e08146eb7336fe5c061d58280188a1011c1c9/README.md",
+      "supports": "Read locally at commit be6e081. Reports two-registry loopback push/copy/pull with retained digest; experimental derived IFCX profile, no approval or lossless STEP round trip."
+    },
+    {
+      "id": "S12",
+      "title": "buildingSMART — Information Delivery Specification (IDS)",
+      "url": "https://github.com/buildingSMART/IDS",
+      "supports": "Computer-interpretable information requirements for IFC. Domain tools can read IDS and check IFC against those requirements; OCI only packages and distributes the files."
+    },
+    {
+      "id": "S13",
+      "title": "buildingSMART — buildingSMART Data Dictionary (bSDD)",
+      "url": "https://github.com/buildingSMART/bSDD",
+      "supports": "An online service hosting dictionary definitions, classifications and properties. Reservoir tanks here represent references to selected definitions or permitted snapshots, not a local copy of the live bSDD service."
+    },
+    {
+      "id": "S14",
+      "title": "CNCF Distribution — deploying a registry",
+      "url": "https://distribution.github.io/distribution/about/deploying/",
+      "supports": "Registry implementation support for TLS and authentication/access restriction, enabled through deployment configuration."
+    },
+    {
+      "id": "S15",
+      "title": "CNCF Distribution — token authentication and authorization",
+      "url": "https://distribution.github.io/distribution/spec/auth/token/",
+      "supports": "Registry token flow supports authenticated clients and repository/action-scoped authorization through an access-control service."
+    },
+    {
+      "id": "S16",
+      "title": "zot — registry binaries for local deployment",
+      "url": "https://github.com/project-zot/zot/releases/tag/v2.1.22",
+      "supports": "Official release provides standalone zot registry binaries for macOS, Linux and FreeBSD. Local-binary registry deployment is an available implementation option."
+    },
+    {
+      "id": "S17",
+      "title": "Microsoft — OCI artifacts in Azure Container Registry",
+      "url": "https://learn.microsoft.com/en-us/azure/container-registry/container-registry-manage-artifact",
+      "supports": "A cloud registry can store and distribute OCI artifacts using ORAS. Deployment examples on the slide are illustrative, not existing AEC product integrations."
+    },
+    {
+      "id": "S18",
+      "title": "IFClite: maintainer decision on whole-file ingestion and layers",
+      "url": "https://github.com/LTplus-AG/ifc-lite/issues/8203#issuecomment-6446094066",
+      "supports": "Direction: ifc-git derives delta layers and records matching; Layer PRs owns history, merge and review. The proposed portable query contract in these slides is an additional ecosystem proposal."
+    },
+    {
+      "id": "S19",
+      "title": "IFClite: proposed scope reconciliation for ifc-git",
+      "url": "https://github.com/LTplus-AG/ifc-lite/pull/8217",
+      "supports": "Documentation proposal narrowing ifc-git to a delivery-to-layer adapter. No implemented OCI adapter or common query profile is claimed."
+    },
+    {
+      "id": "S20",
+      "title": "OCI: content descriptors and byte identity",
+      "url": "https://github.com/opencontainers/image-spec/blob/v1.1.1/descriptor.md",
+      "supports": "Payload descriptors identify media type, digest and size. Domain semantics, query schemas and identity mappings belong to the proposed AEC profile."
+    },
+    {
+      "id": "S21",
+      "title": "buildingSMART discussion: encoding flexibility and interoperable IFC5 artifacts through OCI",
+      "url": "https://github.com/buildingSMART/IFC5-development/issues/155",
+      "supports": "Proposal separating IFC semantics, encoding profiles, artifact contract and OCI distribution. Flexible IFCX encodings on this slide are a proposed agreement, not an approved standard."
+    },
+    {
+      "id": "S22",
+      "title": "IANA: Apache Parquet media type",
+      "url": "https://www.iana.org/assignments/media-types/application/vnd.apache.parquet",
+      "supports": "Registered application/vnd.apache.parquet media type."
+    },
+    {
+      "id": "S23",
+      "title": "IANA: binary glTF media type",
+      "url": "https://www.iana.org/assignments/media-types/model/gltf-binary",
+      "supports": "Registered model/gltf-binary media type for GLB."
+    }
+  ],
+  "presentation_copy": "Extended with three release/change/ifc-git interoperability slides; separate from the main project rebuild.",
+  "audience": "AEC tool builders and teams"
+}

@@ -43,8 +43,8 @@ verified here.
 export crates are pinned to revision
 `9d154898de31fe91eb46f0200f2b3634c8c592f1`. IFClite is an MPL-2.0 dependency;
 its source and license are in the [pinned repository](https://github.com/LTplus-AG/ifc-lite/tree/9d154898de31fe91eb46f0200f2b3634c8c592f1/rust).
-The Nix package source filter includes Cargo files, `src/` and `tests/`, keeping
-local stores, model inputs and presentation assets outside the package source.
+The Nix package source filter includes Cargo and license files, `src/` and
+`tests/`, keeping local stores and model inputs outside the package source.
 
 ## Checks
 
@@ -267,8 +267,7 @@ and merging belong to the applications that consume the agreed profile.
 
 Keep changes focused on the relevant module and run checks appropriate to the
 behavior changed. Update the README when the user workflow changes, and this
-guide when build, security or payload contracts change. Preserve the separate
-presentation deliverable under `presentations/oci-aec-2026-10-28/`.
+guide when build, security or payload contracts change.
 
 ## References
 
