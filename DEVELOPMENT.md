@@ -281,8 +281,10 @@ presentation deliverable under `presentations/oci-aec-2026-10-28/`.
 
 ## Model discovery and publication records
 
-`GET /v2/_catalog?n=100&last=project/model` implements the standard OCI catalog
-shape and `Link` pagination. It lists only published repositories for which the
+`GET /v2/_catalog?n=100&last=project/model` implements the [Distribution catalog
+API](https://distribution.github.io/distribution/spec/api/#listing-repositories)
+shape and `Link` pagination. Catalog listing is not a required OCI Distribution
+endpoint. It lists only published repositories for which the
 JWT carries an exact `pull` grant that is still present in SQLite. Tags use
 `GET /v2/<repository>/tags/list`; manifest reads retain the same pull checks.
 Unauthenticated catalog requests return 401; a token without discovery access

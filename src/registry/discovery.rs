@@ -1,4 +1,4 @@
-//! Authorized standard OCI catalog discovery; no global repository listing.
+//! Authorized Distribution catalog discovery; no global repository listing.
 use super::*;
 
 pub(super) async fn catalog(
