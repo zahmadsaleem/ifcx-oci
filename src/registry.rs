@@ -25,6 +25,8 @@ use uuid::Uuid;
 
 use crate::auth::{Auth, TOKEN_SECONDS};
 use crate::release::{digest, digest_hex};
+mod discovery;
+mod publication;
 
 pub const MANIFEST_TYPE: &str = "application/vnd.oci.image.manifest.v1+json";
 const MAX_BLOB: usize = 512 * 1024 * 1024;
@@ -85,6 +87,7 @@ pub fn router(registry: Arc<Registry>) -> Router {
         .route("/token", any(token))
         .route("/v2/", any(base))
         .route("/v2", any(base))
+        .route("/v2/_catalog", any(discovery::catalog))
         .route("/v2/{*path}", any(endpoint))
         .layer(DefaultBodyLimit::max(MAX_BLOB))
         .with_state(registry)
@@ -202,13 +205,13 @@ fn authorization(
     registry: &Registry,
     headers: &HeaderMap,
     scope: Option<(&str, &str)>,
-) -> Option<Response> {
+) -> std::result::Result<crate::auth::Claims, Box<Response>> {
     let token = headers
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "));
     let Some(claims) = token.and_then(|t| registry.auth.validate(t).ok()) else {
-        return Some(challenge(registry, scope, false));
+        return Err(Box::new(challenge(registry, scope, false)));
     };
     if let Some((repo, action)) = scope {
         if !registry
@@ -216,10 +219,10 @@ fn authorization(
             .permits(&claims, repo, action)
             .unwrap_or(false)
         {
-            return Some(challenge(registry, scope, true));
+            return Err(Box::new(challenge(registry, scope, true)));
         }
     }
-    None
+    Ok(claims)
 }
 
 async fn token(
@@ -270,7 +273,7 @@ async fn token(
         return Ok(response);
     };
     let (token, claims) = registry.auth.issue(user, &scopes, TOKEN_SECONDS)?;
-    Ok(Json(json!({"token":token,"access_token":token,"expires_in":TOKEN_SECONDS,"access":claims.access})).into_response())
+    Ok(Json(json!({"token":token,"access_token":token,"expires_in":TOKEN_SECONDS,"subject":claims.sub,"access":claims.access})).into_response())
 }
 
 fn response(status: StatusCode, body: impl Into<Body>, headers: &[(&str, String)]) -> Response {
@@ -293,8 +296,8 @@ async fn base(
     method: Method,
     headers: HeaderMap,
 ) -> Response {
-    if let Some(response) = authorization(&registry, &headers, None) {
-        return response;
+    if let Err(response) = authorization(&registry, &headers, None) {
+        return *response;
     }
     if method != Method::GET && method != Method::HEAD {
         return ApiError(
@@ -362,9 +365,10 @@ async fn endpoint(
     } else {
         "push"
     };
-    if let Some(response) = authorization(&registry, &headers, Some((repo, action))) {
-        return Ok(response);
-    }
+    let claims = match authorization(&registry, &headers, Some((repo, action))) {
+        Ok(claims) => claims,
+        Err(response) => return Ok(*response),
+    };
     if let Some(repo) = path.strip_suffix("/blobs/uploads/") {
         valid_repo(repo)?;
         if method == Method::POST {
@@ -507,6 +511,7 @@ async fn endpoint(
                     .join(digest_hex(&value)?),
                 &body,
             )?;
+            publication::record(&registry, repo, reference, &value, &claims.sub)?;
             if !reference.starts_with("sha256:") {
                 atomic_write(
                     &registry.repo(repo).join("tags").join(reference),
@@ -544,15 +549,13 @@ async fn endpoint(
             } else {
                 fs::read(file)?
             };
-            return Ok(response(
-                StatusCode::OK,
-                bytes,
-                &[
-                    ("content-type", MANIFEST_TYPE.into()),
-                    ("content-length", size.to_string()),
-                    ("docker-content-digest", value),
-                ],
-            ));
+            let mut metadata = publication::headers(&registry, repo, reference, &value)?;
+            metadata.extend([
+                ("content-type", MANIFEST_TYPE.into()),
+                ("content-length", size.to_string()),
+                ("docker-content-digest", value),
+            ]);
+            return Ok(response(StatusCode::OK, bytes, &metadata));
         }
     } else if let Some(repo) = path.strip_suffix("/tags/list") {
         valid_repo(repo)?;

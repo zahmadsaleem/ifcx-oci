@@ -53,6 +53,10 @@ The registry keeps and delivers releases. Applications interpret the model,
 check requirements or calculate results. Other artifact types can use the same
 registry connection when the applications support their agreed format.
 
+Connected applications can list the models your account can open and show who
+published a version and when. The registry records these delivery details
+separately, so the model package keeps its original identity.
+
 ## Share your own model locally
 
 The following example runs on your own computer. `127.0.0.1` is its local address.

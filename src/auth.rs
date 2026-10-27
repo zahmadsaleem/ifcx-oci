@@ -1,6 +1,6 @@
 //! Local identity store, Argon2 passwords and repository-scoped JWTs.
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fs,
     path::Path,
     sync::Mutex,
@@ -209,6 +209,34 @@ impl Auth {
 
     pub fn issue(&self, user: &str, scopes: &[String], ttl: u64) -> Result<(String, Claims)> {
         let mut access = Vec::new();
+        // Discovery returns the account's exact grants, never a wildcard repository grant.
+        if scopes.iter().any(|scope| scope == "registry:catalog:read") {
+            let db = self
+                .db
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Identity store lock failed"))?;
+            let mut statement = db.prepare(
+                "SELECT repository,action FROM grants WHERE user=?1 ORDER BY repository,action",
+            )?;
+            let rows = statement.query_map([user], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?;
+            let mut repositories: BTreeMap<String, Vec<String>> = BTreeMap::new();
+            for row in rows {
+                let (repository, action) = row?;
+                repositories.entry(repository).or_default().push(action);
+            }
+            access.extend(repositories.into_iter().map(|(name, actions)| Access {
+                kind: "repository".into(),
+                name,
+                actions,
+            }));
+            access.push(Access {
+                kind: "registry".into(),
+                name: "catalog".into(),
+                actions: vec!["read".into()],
+            });
+        }
         for scope in scopes {
             let Some(rest) = scope.strip_prefix("repository:") else {
                 continue;

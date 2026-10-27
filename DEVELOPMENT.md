@@ -245,7 +245,8 @@ when continued availability matters.
 
 ## Registry API and current limits
 
-The server implements the `/v2/` check, chunked and monolithic blob uploads,
+The server implements authorized `/v2/_catalog` discovery, the `/v2/` check,
+chunked and monolithic blob uploads,
 blob GET/HEAD, OCI image-manifest PUT/GET/HEAD, tags listing, upload cancellation
 and the Bearer token flow. It preserves exact manifest bytes, validates referenced
 blob availability and size, and checks upload digests before publishing content.
@@ -276,3 +277,37 @@ presentation deliverable under `presentations/oci-aec-2026-10-28/`.
 - [Registry Bearer authentication and scoped access](https://distribution.github.io/distribution/spec/auth/token/)
 - [ORAS](https://oras.land/docs/)
 - [Pinned IFClite Rust source](https://github.com/LTplus-AG/ifc-lite/tree/9d154898de31fe91eb46f0200f2b3634c8c592f1/rust)
+
+
+## Model discovery and publication records
+
+`GET /v2/_catalog?n=100&last=project/model` implements the standard OCI catalog
+shape and `Link` pagination. It lists only published repositories for which the
+JWT carries an exact `pull` grant that is still present in SQLite. Tags use
+`GET /v2/<repository>/tags/list`; manifest reads retain the same pull checks.
+Unauthenticated catalog requests return 401; a token without discovery access
+returns 403. No catalog or manifest metadata exposes another account's models.
+
+The local browser requests the explicit token scope `registry:catalog:read` at
+`/token` using Basic credentials. This local auth extension issues a catalog
+read capability plus the account's current exact repository/action grants in
+the ordinary `access` array. It never grants wildcard repositories or actions.
+Repository-scoped OCI clients keep the existing token flow. The token response
+also includes the authenticated `subject`. Passwords are not needed to select
+another already-authorized model during the session.
+
+Successful manifest publication records the authenticated JWT subject and
+server epoch time in separate files under the repository's `publications/`
+directory. `GET` and `HEAD /v2/<repository>/manifests/<reference>` return optional
+`IFCX-Registry-Publisher` and `IFCX-Registry-Pushed-At` headers. These headers are
+this registry's extension, not standard OCI manifest fields. A tag describes
+its latest publication; a digest describes the first observed publication of
+those exact bytes here. Records survive restart and do not alter submitted
+manifest bytes or digests. Older publications without records omit the headers;
+clients must show that attribution/time was not recorded.
+
+Manifest `org.opencontainers.image.title`, `.authors` and `.created` annotations
+are declared package metadata. They do not establish an authenticated pusher or
+registry upload time. Browser publications include those standard annotations,
+while the normal UI attributes publication using the registry's separate
+records. Copies to another registry have their own observed publication record.
