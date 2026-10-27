@@ -36,7 +36,7 @@ def synchronize(source):
     assert before == {name: digest(source / name) for name in files}
     assert before == {name: digest(DESTINATION / name) for name in files}
     assert validate_bundle(DESTINATION) == report
-    print(json.dumps({"slides": 15, "notes": 15, "filesMatch": len(files), "sourceUnchanged": True}))
+    print(json.dumps({"slides": report["slides"], "notes": report["notes"], "filesMatch": len(files), "sourceUnchanged": True}))
 
 
 if __name__ == "__main__":

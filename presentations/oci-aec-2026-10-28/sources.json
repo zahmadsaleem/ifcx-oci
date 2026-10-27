@@ -1,6 +1,6 @@
 {
   "checked": "2026-10-27",
-  "presented_slides": 15,
+  "presented_slides": 16,
   "verified_product": "AnkerDB",
   "prototype_commit": "be6e08146eb7336fe5c061d58280188a1011c1c9",
   "sources": [
@@ -131,6 +131,6 @@
       "supports": "Registered model/gltf-binary media type for GLB."
     }
   ],
-  "presentation_copy": "Extended with three release/change/ifc-git interoperability slides; separate from the main project rebuild.",
+  "presentation_copy": "Sixteen-slide pitch with a minimal introduction and a shared AEC package / OCI ecosystem proposal.",
   "audience": "AEC tool builders and teams"
 }

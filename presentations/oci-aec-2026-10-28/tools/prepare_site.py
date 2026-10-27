@@ -12,6 +12,7 @@ from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 TITLES = (
+    "IFClite × Open CDE",
     "Why IFClite feels approachable.",
     "Every new connection takes work.",
     "Integrate once to a common agreement.",
@@ -32,7 +33,7 @@ PUBLIC_FILES = (
     "index.html", "speaker-notes.html", "preview.html", "sources.json",
     "oci-ifcx-manifest.example.json", "ifcx-profile-config.example.json",
     "previews/overview.png",
-    *(f"previews/slide-{number:02}.png" for number in range(1, 16)),
+    *(f"previews/slide-{number:02}.png" for number in range(1, len(TITLES) + 1)),
 )
 TOOL_FILES = (
     "tools/prepare_site.py", "tools/sync.py", "tools/serve.py",
@@ -87,11 +88,12 @@ def validate_bundle(root):
     sections = re.findall(r'<section class="slide\b.*?</section>', index, re.S)
     articles = re.findall(r'<article\b.*?</article>', notes, re.S)
     titles = [html.unescape(re.search(r'data-title="([^"]+)"', s)[1]) for s in sections]
-    if tuple(titles) != TITLES or len(articles) != 15:
-        raise ValueError("The complete approved 15-slide order and Notes are required.")
+    if tuple(titles) != TITLES or len(articles) != len(TITLES):
+        raise ValueError(f"The complete {len(TITLES)}-slide order and Notes are required.")
     for number, (section, article) in enumerate(zip(sections, articles), 1):
         assert f'id="slide-{number}"' in section
         assert f'id="note-{number}"' in article
+        assert '<span>Ahmad Saleem Z · AnkerDB</span>' in section
         assert '<span>IFCLite x Open CDE Proposal</span>' in section
         assert "28 OCT 2026" not in section and "ECOSYSTEM PROPOSAL" not in section
         embedded = re.search(r'<aside class="speaker-note" hidden>(.*?)</aside>', section, re.S)[1]
@@ -124,14 +126,15 @@ def validate_bundle(root):
     for name in ("sources.json", "oci-ifcx-manifest.example.json", "ifcx-profile-config.example.json"):
         json.loads((root / name).read_text())
     sources = json.loads((root / "sources.json").read_text())
-    assert sources["presented_slides"] == 15
+    assert sources["presented_slides"] == len(TITLES)
     assert sources["audience"] == "AEC tool builders and teams"
     assert "verified_person" not in sources
     for name in PUBLIC_FILES:
         if name.endswith(".png"):
             assert (root / name).read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
     return {
-        "slides": 15, "notes": 15, "slideTitles": titles,
+        "slides": len(TITLES), "notes": len(TITLES), "slideTitles": titles,
+        "presenter": "Ahmad Saleem Z",
         "footer": "IFCLite x Open CDE Proposal", "notesMatch": True,
         "relativeLinksResolve": sorted(links), "legacyDraftFiles": 0,
         "publicFiles": {name: digest(root / name) for name in PUBLIC_FILES},
