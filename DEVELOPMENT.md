@@ -61,6 +61,11 @@ determinism, corrupt payloads, unsafe paths and invalid references. Registry
 tests cover uploads, missing blobs, repository membership, persistence,
 authenticated transfers and permission denials. Authentication checks include
 password hashing, token scope, signature, issuer, audience and expiry.
+Blob and selective-pull tests cover file and binary stdout output, exact title
+selection, omitted payloads, duplicate and unsafe titles, corrupt bytes, the
+512 MiB limit, overwrite protection and repository access denials.
+Inspection and browsing tests cover original manifest bytes, tag resolution,
+catalog login, text/JSON listings, pagination and invalid continuation links.
 
 `nix build` runs the library tests in the build sandbox. Networked integration
 tests run through Cargo or the explicit showcase, rather than inside that
@@ -242,6 +247,72 @@ Copy preserves the manifest bytes and digest. The destination can use its own
 repository and tag. This is an explicit copy, not ongoing synchronization. Tags
 may move; retain digests in decision records, and define retention and backups
 when continued availability matters.
+
+## Browse releases and retrieve individual layers
+
+For the bundled registry, request catalog access when signing in. This exposes
+the account's existing exact grants so you can browse its accessible models:
+
+```sh
+ifcx-oci --plain-http login 127.0.0.1:5000 \
+  --username reader --scope registry:catalog:read
+ifcx-oci --plain-http repo ls 127.0.0.1:5000
+ifcx-oci --plain-http repo tags 127.0.0.1:5000/project/model
+```
+
+Listings print one name per line. Both accept `--format json` and `--last NAME`,
+and automatically follow pagination. Repository listing requires a catalog API;
+not all external OCI registries provide one. Known repositories can be inspected
+with an ordinary repository `pull` login.
+
+Resolve a named release to an immutable reference, then inspect its layers
+without downloading their payloads:
+
+```sh
+ifcx-oci --plain-http resolve 127.0.0.1:5000/project/model:issued --full-reference
+ifcx-oci --plain-http manifest fetch 127.0.0.1:5000/project/model:issued --pretty
+```
+
+`resolve` prints only the SHA-256 digest unless `--full-reference` (`-l`) is set.
+It computes the digest from verified manifest bytes. Use the printed
+`REGISTRY/REPOSITORY@DIGEST` reference in subsequent commands to keep retrieval
+pinned if the tag moves.
+
+`manifest fetch` prints the original JSON bytes by default. Each layer descriptor
+includes its filename in `org.opencontainers.image.title`, media type, size and
+digest. Use `--output FILE` to save those exact bytes to a new file;
+`--output -` selects stdout. `--pretty` formats stdout only. Unknown manifest
+fields are preserved. No config or layer blobs are fetched.
+
+Copy a layer's complete `sha256:...` digest from the manifest and substitute it
+for `LAYER_DIGEST`:
+
+```sh
+ifcx-oci --plain-http blob fetch \
+  127.0.0.1:5000/project/model@LAYER_DIGEST --output build/model.glb
+```
+
+Blob fetch resolves the size with HEAD, retrieves the bytes and checks SHA-256
+and size before writing a new file. Use `--output -` for verified raw stdout.
+The 512 MiB per-blob limit applies. The inspect-then-fetch workflow follows
+[ORAS manifest fetch](https://oras.land/docs/commands/oras_manifest_fetch/) and
+[ORAS blob fetch](https://oras.land/docs/commands/oras_blob_fetch/).
+
+`pull --layer` is an **ifcx-oci convenience extension**, not an ORAS pull flag.
+Repeat it to select exact layer filenames:
+
+```sh
+ifcx-oci --plain-http pull 127.0.0.1:5000/project/model:issued \
+  --layer geometry/model.glb --layer data/properties.parquet \
+  --output build/selected
+```
+
+Selected pulls preserve paths and report the manifest digest and selected
+descriptors. Repeated selections are deduplicated; missing, ambiguous or unsafe
+paths fail. Downloads are staged until all selected layers pass size and SHA-256
+checks, and the output directory must be new. Config and unselected layers are
+omitted. These are partial releases; full-release semantic verification requires
+a pull without `--layer`.
 
 ## Registry API and current limits
 

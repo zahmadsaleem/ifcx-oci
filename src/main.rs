@@ -1,14 +1,15 @@
-use anyhow::Result;
-use clap::{Parser, Subcommand};
+use anyhow::{ensure, Result};
+use clap::{Parser, Subcommand, ValueEnum};
 use ifcx_oci::{
-    client::Client,
+    client::{Client, Reference},
     registry::{self, Registry},
     release,
 };
 use std::{
-    io::{self, Read},
+    fs,
+    io::{self, Read, Write},
     net::SocketAddr,
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 #[derive(Parser)]
@@ -71,6 +72,31 @@ enum Command {
         source: String,
         #[arg(long)]
         output: PathBuf,
+        /// ifcx-oci convenience: select an exact layer path; repeat for several.
+        #[arg(long = "layer", value_name = "PATH")]
+        layers: Vec<String>,
+    },
+    /// Retrieve individual OCI blobs.
+    Blob {
+        #[command(subcommand)]
+        command: BlobCommand,
+    },
+    /// Inspect OCI manifests without downloading payloads.
+    Manifest {
+        #[command(subcommand)]
+        command: ManifestCommand,
+    },
+    /// Browse accessible repositories and their tags.
+    Repo {
+        #[command(subcommand)]
+        command: RepoCommand,
+    },
+    /// Resolve an artifact tag or reference to its verified manifest digest.
+    Resolve {
+        source: String,
+        /// Print REGISTRY/REPOSITORY@DIGEST instead of the digest alone.
+        #[arg(short = 'l', long)]
+        full_reference: bool,
     },
     Copy {
         source: String,
@@ -83,6 +109,59 @@ enum Command {
         #[arg(long)]
         oras: Option<PathBuf>,
     },
+}
+
+#[derive(Subcommand)]
+enum BlobCommand {
+    /// Fetch a blob by REGISTRY/REPOSITORY@sha256:DIGEST and verify its bytes.
+    Fetch {
+        source: String,
+        /// New output file, or - for raw bytes on stdout.
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum ManifestCommand {
+    /// Fetch the original manifest JSON by tag or digest.
+    Fetch {
+        source: String,
+        /// New output file, or - for stdout (the default).
+        #[arg(short, long, default_value = "-")]
+        output: PathBuf,
+        /// Prettify manifest JSON printed to stdout.
+        #[arg(long)]
+        pretty: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum RepoCommand {
+    /// List accessible repositories; local login needs --scope registry:catalog:read.
+    Ls {
+        registry: String,
+        /// Start after this repository name.
+        #[arg(long)]
+        last: Option<String>,
+        #[arg(long, value_enum, default_value = "text")]
+        format: ListFormat,
+    },
+    /// List named releases in REGISTRY/REPOSITORY.
+    Tags {
+        repository: String,
+        /// Start after this tag name.
+        #[arg(long)]
+        last: Option<String>,
+        #[arg(long, value_enum, default_value = "text")]
+        format: ListFormat,
+    },
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum ListFormat {
+    Text,
+    Json,
 }
 
 #[derive(Subcommand)]
@@ -115,6 +194,39 @@ fn password(stdin: bool) -> Result<String> {
 }
 fn print(value: &impl serde::Serialize) -> Result<()> {
     println!("{}", serde_json::to_string_pretty(value)?);
+    Ok(())
+}
+
+fn check_output(output: &Path) -> Result<()> {
+    ensure!(
+        output.as_os_str() == "-" || !output.exists(),
+        "Output must not already exist"
+    );
+    Ok(())
+}
+
+fn write_output(output: &Path, bytes: &[u8]) -> Result<()> {
+    if output.as_os_str() == "-" {
+        io::stdout().lock().write_all(bytes)?;
+    } else {
+        let parent = output
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        fs::create_dir_all(parent)?;
+        let mut file = tempfile::NamedTempFile::new_in(parent)?;
+        file.write_all(bytes)?;
+        file.as_file().sync_all()?;
+        file.persist_noclobber(output).map_err(|e| e.error)?;
+    }
+    Ok(())
+}
+
+fn print_list(entries: &[String]) -> Result<()> {
+    let mut stdout = io::stdout().lock();
+    for entry in entries {
+        writeln!(stdout, "{entry}")?;
+    }
     Ok(())
 }
 
@@ -186,10 +298,96 @@ async fn main() -> Result<()> {
             let client = Client::new(cli.auth_file, cli.plain_http)?;
             print(&serde_json::json!({"digest":client.push(&directory,&destination).await?}))?;
         }
-        Command::Pull { source, output } => {
+        Command::Pull {
+            source,
+            output,
+            layers,
+        } => {
             let client = Client::new(cli.auth_file, cli.plain_http)?;
-            let (digest, report) = client.pull(&source, &output).await?;
-            print(&serde_json::json!({"digest":digest,"verification":report}))?;
+            if layers.is_empty() {
+                let (digest, report) = client.pull(&source, &output).await?;
+                print(&serde_json::json!({"digest":digest,"verification":report}))?;
+            } else {
+                let (digest, layers) = client.pull_layers(&source, &output, &layers).await?;
+                print(&serde_json::json!({"digest":digest,"layers":layers}))?;
+            }
+        }
+        Command::Blob {
+            command: BlobCommand::Fetch { source, output },
+        } => {
+            check_output(&output)?;
+            let client = Client::new(cli.auth_file, cli.plain_http)?;
+            let bytes = client.fetch_blob(&source).await?;
+            write_output(&output, &bytes)?;
+            if output.as_os_str() != "-" {
+                print(&serde_json::json!({
+                    "digest": release::digest(&bytes), "size": bytes.len(), "output": output
+                }))?;
+            }
+        }
+        Command::Manifest {
+            command:
+                ManifestCommand::Fetch {
+                    source,
+                    output,
+                    pretty,
+                },
+        } => {
+            check_output(&output)?;
+            let client = Client::new(cli.auth_file, cli.plain_http)?;
+            let reference = Reference::parse(&source, cli.plain_http)?;
+            let (raw, _) = client.manifest(&reference).await?;
+            if pretty && output.as_os_str() == "-" {
+                print(&serde_json::from_slice::<serde_json::Value>(&raw)?)?;
+            } else {
+                write_output(&output, &raw)?;
+            }
+        }
+        Command::Repo { command } => {
+            let client = Client::new(cli.auth_file, cli.plain_http)?;
+            match command {
+                RepoCommand::Ls {
+                    registry,
+                    last,
+                    format,
+                } => {
+                    let entries = client.repositories(&registry, last.as_deref()).await?;
+                    match format {
+                        ListFormat::Text => print_list(&entries)?,
+                        ListFormat::Json => print(&serde_json::json!({"repositories":entries}))?,
+                    }
+                }
+                RepoCommand::Tags {
+                    repository,
+                    last,
+                    format,
+                } => {
+                    let entries = client.tags(&repository, last.as_deref()).await?;
+                    match format {
+                        ListFormat::Text => print_list(&entries)?,
+                        ListFormat::Json => {
+                            let reference =
+                                Reference::parse(&format!("{repository}:latest"), cli.plain_http)?;
+                            print(
+                                &serde_json::json!({"name":reference.repository,"tags":entries}),
+                            )?;
+                        }
+                    }
+                }
+            }
+        }
+        Command::Resolve {
+            source,
+            full_reference,
+        } => {
+            let client = Client::new(cli.auth_file, cli.plain_http)?;
+            let digest = client.resolve(&source).await?;
+            if full_reference {
+                let reference = Reference::parse(&source, cli.plain_http)?;
+                println!("{}/{}@{digest}", reference.registry, reference.repository);
+            } else {
+                println!("{digest}");
+            }
         }
         Command::Copy {
             source,

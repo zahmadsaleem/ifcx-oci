@@ -1,6 +1,6 @@
 //! OCI manifests and blobs, with standard Bearer discovery and scoped login.
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs,
     net::IpAddr,
     path::{Path, PathBuf},
@@ -209,6 +209,10 @@ impl Client {
             .query_pairs_mut()
             .append_pair("service", &parameter("service")?);
         for scope in scopes {
+            if scope == "registry:catalog:read" {
+                realm.query_pairs_mut().append_pair("scope", scope);
+                continue;
+            }
             let scope = scope.strip_prefix("repository:").unwrap_or(scope);
             crate::auth::parse_grant(scope)?;
             realm
@@ -275,6 +279,87 @@ impl Client {
         Ok((bytes, manifest))
     }
 
+    /// Resolve a tag or pinned reference using verified manifest bytes.
+    pub async fn resolve(&self, source: &str) -> Result<String> {
+        let reference = Reference::parse(source, self.plain_http)?;
+        let (raw, _) = self.manifest(&reference).await?;
+        Ok(digest(&raw))
+    }
+
+    /// List repositories visible to the current catalog token, across all pages.
+    pub async fn repositories(&self, registry: &str, last: Option<&str>) -> Result<Vec<String>> {
+        let base = registry_url(registry, self.plain_http)?;
+        self.list(registry, base.join("v2/_catalog")?, "repositories", last)
+            .await
+    }
+
+    /// List tags of a bare REGISTRY/REPOSITORY name, across all pages.
+    pub async fn tags(&self, repository: &str, last: Option<&str>) -> Result<Vec<String>> {
+        let reference = Reference::parse(&format!("{repository}:latest"), self.plain_http)?;
+        self.list(
+            &reference.registry,
+            reference.url("tags/list")?,
+            "tags",
+            last,
+        )
+        .await
+    }
+
+    async fn list(
+        &self,
+        registry: &str,
+        mut url: Url,
+        field: &str,
+        last: Option<&str>,
+    ) -> Result<Vec<String>> {
+        url.query_pairs_mut().append_pair("n", "100");
+        if let Some(last) = last {
+            url.query_pairs_mut().append_pair("last", last);
+        }
+        let endpoint = url.clone();
+        let mut visited = BTreeSet::new();
+        let mut entries = BTreeSet::new();
+        loop {
+            ensure!(
+                visited.insert(url.as_str().to_string()),
+                "Registry returned a pagination loop"
+            );
+            let response = successful(
+                self.request(Method::GET, url.clone(), registry)
+                    .send()
+                    .await?,
+            )
+            .await?;
+            let next = next_page(&response, &url)?;
+            if let Some(next) = &next {
+                ensure!(
+                    next.origin() == endpoint.origin()
+                        && next.path() == endpoint.path()
+                        && next.username().is_empty()
+                        && next.password().is_none()
+                        && next.fragment().is_none(),
+                    "Refusing a pagination link outside the listing endpoint"
+                );
+            }
+            let page: serde_json::Value = response.json().await?;
+            let values = page
+                .get(field)
+                .with_context(|| format!("Registry listing is missing {field}"))?;
+            if !(field == "tags" && values.is_null()) {
+                for entry in serde_json::from_value::<Vec<String>>(values.clone())? {
+                    // Some registries ignore the initial last cursor.
+                    if last.is_none_or(|last| entry.as_str() > last) {
+                        entries.insert(entry);
+                    }
+                }
+            }
+            match next {
+                Some(next) => url = next,
+                None => return Ok(entries.into_iter().collect()),
+            }
+        }
+    }
+
     pub async fn blob(&self, reference: &Reference, descriptor: &Descriptor) -> Result<Vec<u8>> {
         digest_hex(&descriptor.digest)?;
         ensure!(
@@ -304,6 +389,38 @@ impl Client {
             "Blob integrity failure"
         );
         Ok(bytes)
+    }
+
+    /// Fetch one blob by digest, independently of any release manifest.
+    pub async fn fetch_blob(&self, source: &str) -> Result<Vec<u8>> {
+        ensure!(
+            source.contains('@'),
+            "Blob fetch requires a reference of the form REGISTRY/REPOSITORY@sha256:DIGEST"
+        );
+        let reference = Reference::parse(source, self.plain_http)?;
+        let response = successful(
+            self.request(
+                Method::HEAD,
+                reference.url(&format!("blobs/{}", reference.reference))?,
+                &reference.registry,
+            )
+            .send()
+            .await?,
+        )
+        .await?;
+        let size = response
+            .headers()
+            .get(reqwest::header::CONTENT_LENGTH)
+            .context("Registry did not return the blob size")?
+            .to_str()?
+            .parse()?;
+        let descriptor = Descriptor {
+            media_type: "application/octet-stream".into(),
+            digest: reference.reference.clone(),
+            size,
+            annotations: BTreeMap::new(),
+        };
+        self.blob(&reference, &descriptor).await
     }
 
     async fn upload(
@@ -447,29 +564,12 @@ impl Client {
             manifest.artifact_type.as_deref() == Some(ARTIFACT_TYPE),
             "Pull expects the supported IFC release artifact type"
         );
-        let parent = output
-            .parent()
-            .filter(|p| !p.as_os_str().is_empty())
-            .unwrap_or_else(|| Path::new("."));
-        fs::create_dir_all(parent)?;
-        let stage = tempfile::Builder::new()
-            .prefix(".ifcx-pull-")
-            .tempdir_in(parent)?;
-        let mut paths = std::collections::BTreeSet::new();
-        for descriptor in &manifest.layers {
-            let path = descriptor
-                .annotations
-                .get("org.opencontainers.image.title")
-                .context("Artifact layer needs a file title")?;
-            ensure!(paths.insert(path.clone()), "Duplicate artifact layer title");
-            let target = checked_path(stage.path(), path)?;
-            let bytes = self.blob(&reference, descriptor).await?;
-            fs::create_dir_all(target.parent().context("Missing payload parent")?)?;
-            fs::write(target, bytes)?;
-        }
+        let (stage, paths) = self
+            .download_layers(&reference, output, &manifest.layers)
+            .await?;
         self.blob(&reference, &manifest.config).await?;
         let index = release::read_index(stage.path())?;
-        let expected: std::collections::BTreeSet<_> = std::iter::once("index.json".to_string())
+        let expected: BTreeSet<_> = std::iter::once("index.json".to_string())
             .chain(index.files.iter().map(|f| f.path.clone()))
             .collect();
         ensure!(
@@ -482,6 +582,68 @@ impl Client {
         Ok((digest(&raw), report))
     }
 
+    /// Pull exact layer titles and check their bytes without verifying a full release.
+    pub async fn pull_layers(
+        &self,
+        source: &str,
+        output: &Path,
+        titles: &[String],
+    ) -> Result<(String, Vec<Descriptor>)> {
+        ensure!(!output.exists(), "Pull output must not already exist");
+        ensure!(!titles.is_empty(), "Select at least one layer");
+        let reference = Reference::parse(source, self.plain_http)?;
+        let (raw, manifest) = self.manifest(&reference).await?;
+        let titles: BTreeSet<_> = titles.iter().collect();
+        let mut layers = Vec::new();
+        for title in titles {
+            let mut matches = manifest.layers.iter().filter(|layer| {
+                layer.annotations.get("org.opencontainers.image.title") == Some(title)
+            });
+            let layer = matches
+                .next()
+                .with_context(|| format!("Layer not found: {title}"))?;
+            ensure!(matches.next().is_none(), "Ambiguous layer title: {title}");
+            layers.push(layer.clone());
+        }
+        let (stage, _) = self.download_layers(&reference, output, &layers).await?;
+        ensure!(!output.exists(), "Pull output appeared during transfer");
+        fs::rename(stage.path(), output)?;
+        Ok((digest(&raw), layers))
+    }
+
+    async fn download_layers(
+        &self,
+        reference: &Reference,
+        output: &Path,
+        layers: &[Descriptor],
+    ) -> Result<(tempfile::TempDir, BTreeSet<String>)> {
+        let parent = output
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        fs::create_dir_all(parent)?;
+        let stage = tempfile::Builder::new()
+            .prefix(".ifcx-pull-")
+            .tempdir_in(parent)?;
+        let mut paths = BTreeSet::new();
+        // Validate all destination paths before downloading any payloads.
+        let mut targets = Vec::new();
+        for descriptor in layers {
+            let path = descriptor
+                .annotations
+                .get("org.opencontainers.image.title")
+                .context("Artifact layer needs a file title")?;
+            ensure!(paths.insert(path.clone()), "Duplicate artifact layer title");
+            targets.push(checked_path(stage.path(), path)?);
+        }
+        for (descriptor, target) in layers.iter().zip(targets) {
+            let bytes = self.blob(reference, descriptor).await?;
+            fs::create_dir_all(target.parent().context("Missing payload parent")?)?;
+            fs::write(target, bytes)?;
+        }
+        Ok((stage, paths))
+    }
+
     pub async fn copy(&self, source: &str, destination: &str) -> Result<String> {
         let from = Reference::parse(source, self.plain_http)?;
         let target = Reference::parse(destination, self.plain_http)?;
@@ -492,6 +654,39 @@ impl Client {
         }
         self.publish(&target, raw).await
     }
+}
+
+fn next_page(response: &reqwest::Response, current: &Url) -> Result<Option<Url>> {
+    let mut next = None;
+    for header in response.headers().get_all(reqwest::header::LINK) {
+        for link in header.to_str()?.split(',') {
+            let (target, parameters) = link
+                .trim()
+                .split_once('>')
+                .context("Invalid registry pagination link")?;
+            let is_next = parameters.split(';').any(|parameter| {
+                parameter.split_once('=').is_some_and(|(key, value)| {
+                    key.trim() == "rel"
+                        && value
+                            .trim()
+                            .trim_matches('"')
+                            .split_ascii_whitespace()
+                            .any(|relation| relation == "next")
+                })
+            });
+            if is_next {
+                ensure!(next.is_none(), "Registry returned multiple next-page links");
+                next = Some(
+                    current.join(
+                        target
+                            .strip_prefix('<')
+                            .context("Invalid registry pagination target")?,
+                    )?,
+                );
+            }
+        }
+    }
+    Ok(next)
 }
 
 async fn successful(response: reqwest::Response) -> Result<reqwest::Response> {
