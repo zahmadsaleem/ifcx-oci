@@ -119,8 +119,8 @@ ifcx-oci user add --data build/company-a reader --grant project/model:pull
 
 That user signs in with `--username reader --scope project/model:pull` and can
 receive from the same collection. Logins last 15 minutes; sign in again when
-needed. The [development guide](DEVELOPMENT.md#copy-between-two-registries) also
-shows how to copy a release to a second independent registry.
+needed. Use `ifcx-oci copy SOURCE DESTINATION` to copy a release to another
+registry after signing in to both.
 
 ## What to expect
 
@@ -135,8 +135,8 @@ project still requires your own checks. Live editing and merging remain part of
 the applications' workflows.
 
 The bundled registry is for local use on your computer. A shared team service
-needs an appropriately operated registry. Build instructions, format details,
-security and deployment limits are in [DEVELOPMENT.md](DEVELOPMENT.md).
+needs an appropriately operated registry. Build and container commands are in
+[DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## License
 
