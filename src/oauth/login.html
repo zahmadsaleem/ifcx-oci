@@ -36,6 +36,8 @@
     input { width: 100%; border: 1px solid #dce2d8; border-radius: 7px; padding: 12px 13px; font: inherit; font-size: 14px; color: #182921; background: #fff; transition: border-color .15s; }
     input:hover { border-color: #aab8a8; }
     input:focus-visible, button:focus-visible { outline: 2px solid #527a5b; outline-offset: 3px; }
+    .remember { display: flex; align-items: center; gap: 9px; color: #69766b; font-weight: 400; }
+    .remember input { width: 15px; height: 15px; margin: 0; padding: 0; accent-color: #234f3c; }
     .actions { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; margin-top: 26px; }
     button { font: inherit; cursor: pointer; border-radius: 7px; font-size: 12px; font-weight: 550; min-height: 43px; }
     .primary { display: flex; align-items: center; justify-content: space-between; gap: 16px; background: #234f3c; border: 1px solid #234f3c; color: #fff; padding: 12px 16px; }
@@ -92,6 +94,7 @@
         <input id="username" name="username" value="{{username}}" autocomplete="username" required maxlength="64" autocapitalize="none" spellcheck="false" aria-describedby="signin-error">
         <label for="password">Password</label>
         <input id="password" name="password" type="password" autocomplete="current-password" required aria-describedby="signin-error">
+        <label class="remember"><input type="checkbox" name="remember_me" value="true" {{remember_checked}}>Remember me for 30 days</label>
         <div class="actions">
           <button class="primary" name="decision" value="allow"><span>Sign in &amp; connect</span><span class="arrow" aria-hidden="true">→</span></button>
           <button class="secondary" name="decision" value="deny" formnovalidate>Cancel</button>
@@ -100,6 +103,6 @@
       <p class="return">You'll return to <span>{{destination}}</span></p>
     </section>
   </main>
-  <footer><span>Only the models you're allowed to access.</span><span>Access lasts 15 minutes.</span></footer>
+  <footer><span>Only the models you're allowed to access.</span><span>Connected for your working day.</span></footer>
 </body>
 </html>

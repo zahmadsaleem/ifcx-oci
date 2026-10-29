@@ -13,7 +13,13 @@ fn escape(value: &str) -> String {
         .replace('\'', "&#39;")
 }
 
-pub(super) fn form(id: &str, pending: &Pending, message: &str, username: &str) -> Response {
+pub(super) fn form(
+    id: &str,
+    pending: &Pending,
+    message: &str,
+    username: &str,
+    remember: bool,
+) -> Response {
     let callback_origin = Url::parse(&pending.request.redirect_uri)
         .expect("registered redirect")
         .origin()
@@ -37,6 +43,10 @@ pub(super) fn form(id: &str, pending: &Pending, message: &str, username: &str) -
         _ => "Connect your account",
     };
     let html = include_str!("login.html")
+        .replace(
+            "{{remember_checked}}",
+            if remember { "checked" } else { "" },
+        )
         .replace("{{client}}", &escape(&pending.request.client_id))
         .replace("{{access}}", access)
         .replace("{{error}}", &escape(message))

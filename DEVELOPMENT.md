@@ -63,6 +63,8 @@ authenticated transfers and permission denials. Authentication checks include
 password hashing, token scope, signature, issuer, audience and expiry. Browser
 authorization tests cover S256, exact callback registration, browser cookie and
 origin checks, denial, expiry, one-time codes and permission intersection.
+Session tests cover rotation and replay revocation, 30-day remembered login,
+restart persistence, shared-cookie renewal, logout races and permission caps.
 Blob and selective-pull tests cover file and binary stdout output, exact title
 selection, omitted payloads, duplicate and unsafe titles, corrupt bytes, the
 512 MiB limit, overwrite protection and repository access denials.
@@ -203,6 +205,8 @@ the existence of the subject. Repository access requires the action in both the
 token and current SQLite grants. There are no wildcard or implicit
 cross-repository grants. Invalid credentials or tokens receive an authentication
 failure; a valid token without the required repository/action is denied.
+Browser tokens also require an active server session; revocation or expiry
+immediately invalidates every access token from that session.
 
 Passwords must be at least 12 characters. Interactive prompts do not echo input;
 `--password-stdin` is available on `user add` and `login` for automation. On Unix,
@@ -235,13 +239,25 @@ its verifier at `/oauth/token` for the usual repository-scoped Bearer token.
 Register the application's callback page separately from registry routes; the
 registry does not host that page. See [OAUTH.md](OAUTH.md) for the complete flow.
 
-Keep tokens in application memory and clear them on sign-out or expiry. Tokens
-expire after 15 minutes, with no refresh token or persistent browser account
-session. Sign-out is local token disposal; issued tokens expire normally.
-Reconnect through registry approval after expiry.
+Keep access tokens in application memory and renew them automatically before
+their 15-minute expiry. A normal session lasts up to eight hours in its current
+tab. Selecting **Remember me for 30 days** on the registry sign-in page allows
+the connection to survive reloads and browser restarts, shared across tabs.
+This stores a rotating refresh token in an HttpOnly cookie, with no browser
+localStorage secret. The session deadline does not extend when renewed.
 
-A same-origin application proxy can forward `/oauth/config` and `/oauth/token`
-to its fixed registry destination. Open the authorization page directly on the
+Sign-out revokes the complete server session and clears its cookie. Previously
+issued access tokens for that session stop working immediately. New grants
+require sign-in again; renewal cannot widen the original approval. The existing
+CLI token expiry and sign-out semantics are unchanged.
+
+A same-origin application proxy can forward `/oauth/config`, `/oauth/token` and
+`/oauth/revoke` to its fixed registry destination. Forward only the named
+`ifcx_oci_refresh` cookie and its Set-Cookie response at the exact token/revoke
+endpoints; other cookies must stay with the application. Use Web Locks to
+serialize remembered-cookie exchanges, restoration, renewal and sign-out across
+tabs. See [OAUTH.md](OAUTH.md) for the full session and proxy contract.
+Open the authorization page directly on the
 registry origin, so account credentials stay with the registry. The existing
 `/token` endpoint remains for CLI and independent OCI clients.
 

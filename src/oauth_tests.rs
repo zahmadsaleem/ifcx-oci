@@ -70,6 +70,7 @@ async fn code_exchange_binds_client_callback_verifier_expiry_and_is_single_use()
             Code {
                 request: req.clone(),
                 user: "reader".into(),
+                remember: false,
                 expires: if bad == "expired" { now() } else { now() + 60 },
             },
         );
@@ -79,6 +80,7 @@ async fn code_exchange_binds_client_callback_verifier_expiry_and_is_single_use()
             redirect_uri: req.redirect_uri,
             code: code.clone(),
             code_verifier: "a".repeat(43),
+            refresh_token: None,
         };
         match bad {
             "verifier" => input.code_verifier = "b".repeat(43),
@@ -88,7 +90,7 @@ async fn code_exchange_binds_client_callback_verifier_expiry_and_is_single_use()
             "grant" => input.grant_type = "password".into(),
             _ => {}
         }
-        let response = exchange(State(registry.clone()), Form(input)).await;
+        let response = exchange(State(registry.clone()), HeaderMap::new(), Form(input)).await;
         assert_eq!(
             response.status(),
             if bad == "valid" {
@@ -115,9 +117,10 @@ async fn code_exchange_binds_client_callback_verifier_expiry_and_is_single_use()
             redirect_uri: request().redirect_uri,
             code,
             code_verifier: "a".repeat(43),
+            refresh_token: None,
         };
         assert_eq!(
-            exchange(State(registry.clone()), Form(replay))
+            exchange(State(registry.clone()), HeaderMap::new(), Form(replay))
                 .await
                 .status(),
             StatusCode::BAD_REQUEST
@@ -191,7 +194,13 @@ async fn login_retry_escapes_input_and_does_not_expand_user_supplied_template_fi
         expires: now() + 300,
     };
     let input = "\"><img src=x onerror=alert(1)>{{request_id}}";
-    let response = page::form("test-form-id", &pending, "<script>alert(1)</script>", input);
+    let response = page::form(
+        "test-form-id",
+        &pending,
+        "<script>alert(1)</script>",
+        input,
+        false,
+    );
     let bytes = axum::body::to_bytes(response.into_body(), 65536).await?;
     let html = String::from_utf8(bytes.to_vec())?;
     assert!(!html.contains("<img") && !html.contains("<script>"));

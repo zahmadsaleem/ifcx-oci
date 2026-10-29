@@ -19,6 +19,7 @@ use sha2::{Digest, Sha256};
 use crate::{auth::now, registry::Registry};
 
 mod page;
+mod session;
 use page::form;
 
 const FORM_SECONDS: u64 = 300;
@@ -61,6 +62,7 @@ struct Code {
     request: Authorization,
     user: String,
     expires: u64,
+    remember: bool,
 }
 
 impl Store {
@@ -116,6 +118,7 @@ pub fn router() -> Router<std::sync::Arc<Registry>> {
         .route("/oauth/config", get(config))
         .route("/oauth/authorize", get(authorize).post(consent))
         .route("/oauth/token", post(exchange))
+        .route("/oauth/revoke", post(session::revoke))
         .layer(DefaultBodyLimit::max(16 * 1024))
 }
 
@@ -156,6 +159,8 @@ async fn config(State(registry): State<std::sync::Arc<Registry>>) -> Response {
     hardened(Json(
         json!({"client_id":store.client_id,"authorization_endpoint":endpoint,
         "token_endpoint":"/oauth/token","redirect_uris":store.redirects,
+        "refresh_cookie_name":session::COOKIE,"revocation_endpoint":"/oauth/revoke",
+        "session_max_age":crate::auth::SESSION_SECONDS,"remembered_session_max_age":crate::auth::REMEMBER_SECONDS,
         "code_challenge_methods_supported":["S256"]}),
     ))
 }
@@ -208,7 +213,7 @@ async fn authorize(
         cookie: random(),
         expires: now() + FORM_SECONDS,
     };
-    let mut response = form(&id, &pending, "", "");
+    let mut response = form(&id, &pending, "", "", false);
     response.headers_mut().insert(header::SET_COOKIE,
         format!("ifcx_oauth_{id}={}; HttpOnly; SameSite=Strict; Path=/oauth/authorize; Max-Age={FORM_SECONDS}", pending.cookie)
             .parse().expect("generated cookie"));
@@ -225,6 +230,8 @@ struct Consent {
     #[serde(default)]
     password: String,
     decision: String,
+    #[serde(default)]
+    remember_me: bool,
 }
 
 async fn consent(
@@ -264,6 +271,7 @@ async fn consent(
             pending,
             "Sign-in failed. Check your username and password.",
             &input.username,
+            input.remember_me,
         );
     }
     let pending = store
@@ -287,6 +295,7 @@ async fn consent(
                 request: pending.request,
                 user: input.username,
                 expires: now() + CODE_SECONDS,
+                remember: input.remember_me,
             },
         );
     }
@@ -308,15 +317,30 @@ async fn consent(
 struct Exchange {
     grant_type: String,
     client_id: String,
+    #[serde(default)]
     redirect_uri: String,
+    #[serde(default)]
     code: String,
+    #[serde(default)]
     code_verifier: String,
+    #[serde(default)]
+    refresh_token: Option<String>,
 }
 
 async fn exchange(
     State(registry): State<std::sync::Arc<Registry>>,
+    headers: HeaderMap,
     Form(input): Form<Exchange>,
 ) -> Response {
+    if input.grant_type == "refresh_token" {
+        if !input.code.is_empty()
+            || !input.code_verifier.is_empty()
+            || !input.redirect_uri.is_empty()
+        {
+            return error(StatusCode::BAD_REQUEST, "invalid_request");
+        }
+        return session::refresh(&registry, &headers, &input);
+    }
     let code = {
         let Ok(mut store) = registry.oauth.inner.lock() else {
             return error(StatusCode::INTERNAL_SERVER_ERROR, "server_error");
@@ -331,6 +355,7 @@ async fn exchange(
     if input.grant_type != "authorization_code"
         || input.client_id != code.request.client_id
         || input.redirect_uri != code.request.redirect_uri
+        || input.refresh_token.is_some()
         || !(43..=128).contains(&input.code_verifier.len())
         || !input
             .code_verifier
@@ -341,15 +366,7 @@ async fn exchange(
         return error(StatusCode::BAD_REQUEST, "invalid_grant");
     }
     let requested = scopes(&code.request.scope).expect("validated scopes");
-    match registry
-        .auth
-        .issue(&code.user, &requested, crate::auth::TOKEN_SECONDS)
-    {
-        Ok((token, claims)) => hardened(Json(json!({"token":token,"access_token":token,
-            "token_type":"Bearer","expires_in":crate::auth::TOKEN_SECONDS,
-            "subject":claims.sub,"access":claims.access}))),
-        Err(_) => error(StatusCode::BAD_REQUEST, "invalid_grant"),
-    }
+    session::initial(&registry, &headers, code, &requested)
 }
 
 #[cfg(test)]
