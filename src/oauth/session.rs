@@ -82,7 +82,7 @@ fn clear_cookie(response: &mut Response, secure: bool) {
 }
 
 fn secure(session: &RefreshSession) -> bool {
-    session.redirect_uri.starts_with("https://")
+    Url::parse(&session.redirect_uri).is_ok_and(|url| url.scheme() == "https")
 }
 
 fn reply(tokens: SessionTokens, clear_previous: bool) -> Response {

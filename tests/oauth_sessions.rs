@@ -11,6 +11,7 @@ use std::sync::Arc;
 const CLIENT: &str = "model-client";
 const CALLBACK: &str = "http://localhost:3000/oauth/callback";
 const HTTPS_CALLBACK: &str = "https://app.example/oauth/callback";
+const MIXED_CASE_HTTPS_CALLBACK: &str = "HTTPS://app.example/oauth/callback";
 
 struct Fixture {
     root: tempfile::TempDir,
@@ -49,9 +50,14 @@ impl Fixture {
         Ok(fixture)
     }
     async fn listen(&mut self) -> Result<()> {
-        self.registry
-            .oauth
-            .configure(CLIENT, &[CALLBACK.into(), HTTPS_CALLBACK.into()])?;
+        self.registry.oauth.configure(
+            CLIENT,
+            &[
+                CALLBACK.into(),
+                HTTPS_CALLBACK.into(),
+                MIXED_CASE_HTTPS_CALLBACK.into(),
+            ],
+        )?;
         let listener = registry::bind("127.0.0.1:0".parse()?).await?;
         self.origin = format!("http://{}", listener.local_addr()?);
         self.server = Some(tokio::spawn(registry::serve(
@@ -358,7 +364,7 @@ async fn remembered_cookie_is_30_days_origin_bound_shared_across_tabs_and_surviv
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn secure_cookie_expiry_and_replay_have_no_persistent_bearer_escape() -> Result<()> {
     let fixture = Fixture::new().await?;
-    let response = fixture.login(true, HTTPS_CALLBACK).await?;
+    let response = fixture.login(true, MIXED_CASE_HTTPS_CALLBACK).await?;
     assert_eq!(response.status(), 200);
     assert!(response.headers()["set-cookie"]
         .to_str()?
