@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Sign in · ifcx-oci</title>
+  <style>
+    :root { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #182921; background: #f5f6f2; font-synthesis: none; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; padding: 0 32px; }
+    header, main, footer { width: 100%; max-width: 1040px; margin-inline: auto; }
+    header { display: flex; justify-content: space-between; align-items: center; padding: 38px 0; }
+    .brand { display: inline-flex; align-items: center; gap: 12px; font-size: 19px; font-weight: 650; letter-spacing: -.6px; }
+    .mark { display: grid; grid-template-columns: repeat(2, 7px); gap: 3px; }
+    .mark i { width: 7px; height: 7px; background: #234e3d; }
+    .mark i:last-child { background: #9eb89c; }
+    .header-note, .eyebrow { font-size: 10px; letter-spacing: 1.8px; font-weight: 600; text-transform: uppercase; color: #69766c; }
+    main { display: grid; grid-template-columns: 1fr 1fr; margin-block: auto; border: 1px solid #dce2d7; border-radius: 16px; overflow: hidden; background: #fff; }
+    .intro { position: relative; isolation: isolate; display: flex; flex-direction: column; justify-content: space-between; padding: 48px; background: #edf1e8; border-right: 1px solid #dce2d7; overflow: hidden; }
+    .intro::before { content: ""; position: absolute; z-index: -1; inset: 0; opacity: .6; background-image: linear-gradient(#d9e1d3 1px, transparent 1px), linear-gradient(90deg, #d9e1d3 1px, transparent 1px); background-size: 48px 48px; mask-image: linear-gradient(155deg, transparent 25%, #000); }
+    .eyebrow { margin: 0 0 54px; color: #51715a; }
+    h1 { max-width: 340px; font-size: clamp(38px, 4vw, 52px); line-height: 1.06; font-weight: 500; letter-spacing: -2.7px; margin: 0 0 22px; }
+    .lead { max-width: 260px; color: #607164; font-size: 15px; line-height: 1.7; margin: 0; }
+    .assurance { margin-top: 64px; display: flex; align-items: center; gap: 9px; font-size: 11px; color: #536b5a; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: #4e7c58; }
+    .panel { padding: 46px 48px 36px; }
+    h2 { margin: 0 0 8px; font-size: 27px; line-height: 1.2; font-weight: 550; letter-spacing: -1px; }
+    .subtitle { margin: 0 0 28px; color: #748076; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+    .subtitle strong { font-weight: 550; color: #334d3c; }
+    .access { display: grid; grid-template-columns: 22px 1fr; gap: 8px; padding: 14px; background: #f5f7f3; border: 1px solid #e7ebe3; border-radius: 8px; margin-bottom: 26px; }
+    .check { color: #3b7150; padding-top: 1px; font-size: 15px; }
+    .access p { margin: 0; font-size: 12px; font-weight: 550; line-height: 1.5; }
+    .access small { display: block; font-size: 11px; margin-top: 3px; color: #7b877c; line-height: 1.5; }
+    label { display: block; font-size: 12px; font-weight: 550; margin: 17px 0 8px; }
+    input { width: 100%; border: 1px solid #dce2d8; border-radius: 7px; padding: 12px 13px; font: inherit; font-size: 14px; color: #182921; background: #fff; transition: border-color .15s; }
+    input:hover { border-color: #aab8a8; }
+    input:focus-visible, button:focus-visible { outline: 2px solid #527a5b; outline-offset: 3px; }
+    .actions { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; margin-top: 26px; }
+    button { font: inherit; cursor: pointer; border-radius: 7px; font-size: 12px; font-weight: 550; min-height: 43px; }
+    .primary { display: flex; align-items: center; justify-content: space-between; gap: 16px; background: #234f3c; border: 1px solid #234f3c; color: #fff; padding: 12px 16px; }
+    .primary:hover { background: #183d2c; }
+    .arrow { font-size: 17px; line-height: 1; font-weight: 400; }
+    .secondary { background: transparent; border: 1px solid transparent; color: #6d796f; padding: 10px 12px; }
+    .secondary:hover { background: #f2f4ef; color: #233b2c; }
+    .return { border-top: 1px solid #edf0e8; margin: 26px 0 0; padding-top: 18px; font-size: 10px; line-height: 1.7; color: #8b958a; overflow-wrap: anywhere; }
+    .return span { color: #69766b; }
+    .error { font-size: 12px; line-height: 1.6; color: #913c31; background: #fff3ef; border-radius: 7px; padding: 10px 12px; }
+    .error:empty { display: none; }
+    footer { display: flex; justify-content: space-between; padding: 28px 0; color: #8b958a; font-size: 10px; line-height: 1.7; }
+    @media (max-width: 760px) {
+      body { padding: 0 20px; }
+      header { padding: 24px 0; }
+      .header-note { display: none; }
+      main { max-width: 440px; grid-template-columns: 1fr; margin-block: 12px; }
+      .intro { padding: 28px; border-right: 0; border-bottom: 1px solid #dce2d7; }
+      .eyebrow { margin-bottom: 22px; }
+      h1 { font-size: 36px; letter-spacing: -1.8px; margin-bottom: 12px; }
+      .lead { max-width: none; font-size: 13px; }
+      .assurance { display: none; }
+      .panel { padding: 28px; }
+      footer { max-width: 440px; gap: 16px; font-size: 9px; }
+    }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>ifcx-oci</div>
+    <span class="header-note">Your model registry</span>
+  </header>
+  <main>
+    <section class="intro" aria-label="Your registry account">
+      <div>
+        <p class="eyebrow">A shared place. Your access.</p>
+        <h1>Your models,<br>connected.</h1>
+        <p class="lead">Bring your models into the tools you work with. Start with your registry account.</p>
+      </div>
+      <div class="assurance"><span class="dot" aria-hidden="true"></span>Your password stays with this registry.</div>
+    </section>
+    <section class="panel" aria-labelledby="sign-in-title">
+      <h2 id="sign-in-title">Sign in</h2>
+      <p class="subtitle">Continue to <strong>{{client}}</strong></p>
+      <div class="access">
+        <span class="check" aria-hidden="true">✓</span>
+        <div><p>{{access}}</p><small>Your existing permissions apply.</small></div>
+      </div>
+      <p class="error" id="signin-error" role="alert">{{error}}</p>
+      <form method="post" action="/oauth/authorize">
+        <input type="hidden" name="request_id" value="{{request_id}}">
+        <label for="username">Username</label>
+        <input id="username" name="username" value="{{username}}" autocomplete="username" required maxlength="64" autocapitalize="none" spellcheck="false" aria-describedby="signin-error">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required aria-describedby="signin-error">
+        <div class="actions">
+          <button class="primary" name="decision" value="allow"><span>Sign in &amp; connect</span><span class="arrow" aria-hidden="true">→</span></button>
+          <button class="secondary" name="decision" value="deny" formnovalidate>Cancel</button>
+        </div>
+      </form>
+      <p class="return">You'll return to <span>{{destination}}</span></p>
+    </section>
+  </main>
+  <footer><span>Only the models you're allowed to access.</span><span>Access lasts 15 minutes.</span></footer>
+</body>
+</html>

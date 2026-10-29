@@ -60,7 +60,9 @@ The tests cover actual IFC extraction and geometry, source-schema metadata,
 determinism, corrupt payloads, unsafe paths and invalid references. Registry
 tests cover uploads, missing blobs, repository membership, persistence,
 authenticated transfers and permission denials. Authentication checks include
-password hashing, token scope, signature, issuer, audience and expiry.
+password hashing, token scope, signature, issuer, audience and expiry. Browser
+authorization tests cover S256, exact callback registration, browser cookie and
+origin checks, denial, expiry, one-time codes and permission intersection.
 Blob and selective-pull tests cover file and binary stdout output, exact title
 selection, omitted payloads, duplicate and unsafe titles, corrupt bytes, the
 512 MiB limit, overwrite protection and repository access denials.
@@ -179,6 +181,11 @@ Review missing or unsupported geometry for the intended use.
 
 ## Authentication and authorization
 
+Browser applications can delegate sign-in to the registry using OAuth
+Authorization Code with PKCE S256. The registry's browser page handles local
+credentials and approval; applications receive scoped tokens. See the
+[browser login contract](OAUTH.md) for endpoint and session details.
+
 SQLite stores Argon2id password hashes, users and exact repository/action grants.
 The token endpoint authenticates credentials and intersects requested scopes
 with the user's stored grants. It issues HS256 JWTs lasting 900 seconds. Each
@@ -201,6 +208,42 @@ Passwords must be at least 12 characters. Interactive prompts do not echo input;
 `--password-stdin` is available on `user add` and `login` for automation. On Unix,
 the registry directory is mode `0700`, and the database, signing key and client
 auth file are mode `0600`. Protect the store and client credentials accordingly.
+
+### Connect a browser application
+
+Create registry accounts with `user add` as in the README. Register the public
+client's ID and exact callback URI when starting the registry:
+
+```sh
+ifcx-oci serve --data build/company-a --listen 127.0.0.1:5000 \
+  --oauth-client-id model-client \
+  --oauth-redirect-uri http://localhost:3000/oauth/callback
+```
+
+Choose the client ID and callback to match your application. There is no built-in
+application identity or client secret. One public client can be registered per
+running registry; repeat `--oauth-redirect-uri` to allow its additional explicit
+origins or ports. Nothing is registered by default. Callback URLs require HTTPS
+except on loopback. Supply registration flags at each startup; account grants
+and the signing key stay in the registry store.
+
+The application fetches `/oauth/config`, generates a fresh PKCE verifier, S256
+challenge and state, and opens the returned authorization endpoint in a browser.
+The account owner signs in and approves access on the registry's own origin.
+After validating the callback and state, the application exchanges the code and
+its verifier at `/oauth/token` for the usual repository-scoped Bearer token.
+Register the application's callback page separately from registry routes; the
+registry does not host that page. See [OAUTH.md](OAUTH.md) for the complete flow.
+
+Keep tokens in application memory and clear them on sign-out or expiry. Tokens
+expire after 15 minutes, with no refresh token or persistent browser account
+session. Sign-out is local token disposal; issued tokens expire normally.
+Reconnect through registry approval after expiry.
+
+A same-origin application proxy can forward `/oauth/config` and `/oauth/token`
+to its fixed registry destination. Open the authorization page directly on the
+registry origin, so account credentials stay with the registry. The existing
+`/token` endpoint remains for CLI and independent OCI clients.
 
 Additional access can be granted explicitly:
 

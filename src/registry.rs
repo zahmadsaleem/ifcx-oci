@@ -34,6 +34,7 @@ const MAX_BLOB: usize = 512 * 1024 * 1024;
 pub struct Registry {
     root: PathBuf,
     pub auth: Auth,
+    pub oauth: crate::oauth::OAuth,
     realm: std::sync::RwLock<String>,
     mutation: Mutex<()>,
 }
@@ -63,9 +64,16 @@ impl Registry {
         Ok(Arc::new(Self {
             root: root.into(),
             auth: Auth::open(root)?,
+            oauth: crate::oauth::OAuth::default(),
             realm: std::sync::RwLock::new(String::new()),
             mutation: Mutex::new(()),
         }))
+    }
+    pub fn oauth_authorization_endpoint(&self) -> String {
+        self.realm
+            .read()
+            .expect("realm lock")
+            .replace("/token", "/oauth/authorize")
     }
     fn repo(&self, repo: &str) -> PathBuf {
         self.root.join("repositories").join(repo)
@@ -84,6 +92,7 @@ impl Registry {
 
 pub fn router(registry: Arc<Registry>) -> Router {
     Router::new()
+        .merge(crate::oauth::router())
         .route("/token", any(token))
         .route("/v2/", any(base))
         .route("/v2", any(base))

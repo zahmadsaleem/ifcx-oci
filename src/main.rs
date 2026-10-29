@@ -35,6 +35,12 @@ enum Command {
         data: PathBuf,
         #[arg(long, default_value = "127.0.0.1:5000")]
         listen: SocketAddr,
+        /// Public OAuth client ID to register for browser login.
+        #[arg(long, requires = "oauth_redirect_uris")]
+        oauth_client_id: Option<String>,
+        /// Exact callback URL for the registered client; repeat per origin.
+        #[arg(long = "oauth-redirect-uri", requires = "oauth_client_id")]
+        oauth_redirect_uris: Vec<String>,
     },
     /// Manage local registry users and exact repository/action grants.
     User {
@@ -234,8 +240,16 @@ fn print_list(entries: &[String]) -> Result<()> {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Command::Serve { data, listen } => {
+        Command::Serve {
+            data,
+            listen,
+            oauth_client_id,
+            oauth_redirect_uris,
+        } => {
             let registry = Registry::open(data)?;
+            if let Some(client_id) = oauth_client_id {
+                registry.oauth.configure(&client_id, &oauth_redirect_uris)?;
+            }
             let listener = registry::bind(listen).await?;
             eprintln!(
                 "Local OCI registry: http://{} (JWT authentication required)",

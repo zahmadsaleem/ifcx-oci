@@ -61,6 +61,11 @@ separately, so the model package keeps its original identity.
 
 ## Share your own model locally
 
+Browser applications can use a registry-owned sign-in page and OAuth
+Authorization Code with PKCE, so they do not collect registry passwords. See
+[application registration and login](DEVELOPMENT.md#connect-a-browser-application).
+The terminal examples below use the CLI's existing OCI account login.
+
 The following example runs on your own computer. `127.0.0.1` is its local address.
 Replace `/path/to/model.ifc` with the path to your IFC file.
 
