@@ -1,4 +1,4 @@
-//! Persistent loopback registry implementing the OCI artifact push/pull path.
+//! Persistent single-server registry implementing the OCI artifact push/pull path.
 use std::{
     collections::HashMap,
     fs,
@@ -14,7 +14,7 @@ use axum::{
     extract::{DefaultBodyLimit, Path as RoutePath, Query, RawQuery, State},
     http::{header, HeaderMap, Method, StatusCode},
     response::{IntoResponse, Response},
-    routing::any,
+    routing::{any, get},
     Json, Router,
 };
 use base64::Engine;
@@ -23,9 +23,10 @@ use serde_json::{json, Value};
 use tokio::{net::TcpListener, sync::Mutex};
 use uuid::Uuid;
 
-use crate::auth::{Auth, TOKEN_SECONDS};
+use crate::auth::{Auth, PasswordLoginError, TOKEN_SECONDS};
 use crate::release::{digest, digest_hex};
 mod discovery;
+mod public_url;
 mod publication;
 
 pub const MANIFEST_TYPE: &str = "application/vnd.oci.image.manifest.v1+json";
@@ -35,7 +36,7 @@ pub struct Registry {
     root: PathBuf,
     pub auth: Auth,
     pub oauth: crate::oauth::OAuth,
-    realm: std::sync::RwLock<String>,
+    public_url: std::sync::RwLock<Option<reqwest::Url>>,
     mutation: Mutex<()>,
 }
 
@@ -61,19 +62,18 @@ impl Registry {
                 b"{\"format\":\"ifcx-oci-registry/1\"}\n",
             )?;
         }
+        fs::create_dir_all(root.join("blobs/sha256"))?;
+        fs::create_dir_all(root.join("repositories"))?;
         Ok(Arc::new(Self {
             root: root.into(),
             auth: Auth::open(root)?,
             oauth: crate::oauth::OAuth::default(),
-            realm: std::sync::RwLock::new(String::new()),
+            public_url: std::sync::RwLock::new(None),
             mutation: Mutex::new(()),
         }))
     }
     pub fn oauth_authorization_endpoint(&self) -> String {
-        self.realm
-            .read()
-            .expect("realm lock")
-            .replace("/token", "/oauth/authorize")
+        format!("{}/oauth/authorize", self.public_origin())
     }
     fn repo(&self, repo: &str) -> PathBuf {
         self.root.join("repositories").join(repo)
@@ -93,6 +93,8 @@ impl Registry {
 pub fn router(registry: Arc<Registry>) -> Router {
     Router::new()
         .merge(crate::oauth::router())
+        .route("/healthz", get(|| async { StatusCode::OK }))
+        .route("/readyz", get(ready))
         .route("/token", any(token))
         .route("/v2/", any(base))
         .route("/v2", any(base))
@@ -103,25 +105,49 @@ pub fn router(registry: Arc<Registry>) -> Router {
 }
 
 pub async fn serve(listener: TcpListener, registry: Arc<Registry>) -> Result<()> {
-    ensure!(
-        listener.local_addr()?.ip().is_loopback(),
-        "This experimental registry binds only to loopback"
-    );
-    *registry
-        .realm
-        .write()
-        .map_err(|_| anyhow::anyhow!("Realm lock failed"))? =
-        format!("http://{}/token", listener.local_addr()?);
-    axum::serve(listener, router(registry)).await?;
+    serve_with_shutdown(listener, registry, std::future::pending()).await
+}
+
+pub async fn serve_with_shutdown(
+    listener: TcpListener,
+    registry: Arc<Registry>,
+    shutdown: impl std::future::Future<Output = ()> + Send + 'static,
+) -> Result<()> {
+    registry.configure_listener(listener.local_addr()?)?;
+    axum::serve(listener, router(registry))
+        .with_graceful_shutdown(shutdown)
+        .await?;
     Ok(())
 }
 
 pub async fn bind(address: SocketAddr) -> Result<TcpListener> {
-    ensure!(
-        address.ip().is_loopback(),
-        "This experimental registry binds only to loopback"
-    );
     Ok(TcpListener::bind(address).await?)
+}
+
+async fn ready(State(registry): State<Arc<Registry>>) -> StatusCode {
+    let ready = tokio::task::spawn_blocking(move || -> Result<()> {
+        registry.auth.check_ready()?;
+        // Probe the mounted filesystem, including the artifact locations, with
+        // real I/O. Temporary files disappear even when a probe fails.
+        fs::read(registry.root.join("registry.json"))?;
+        for directory in [
+            registry.root.clone(),
+            registry.root.join("blobs/sha256"),
+            registry.root.join("repositories"),
+        ] {
+            let mut probe = tempfile::NamedTempFile::new_in(directory)?;
+            probe.write_all(b"ready")?;
+            probe.as_file().sync_all()?;
+            ensure!(fs::read(probe.path())? == b"ready", "Storage probe failed");
+        }
+        Ok(())
+    })
+    .await;
+    if matches!(ready, Ok(Ok(()))) {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    }
 }
 
 pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
@@ -195,7 +221,7 @@ fn challenge(registry: &Registry, scope: Option<(&str, &str)>, denied: bool) -> 
         .into(),
     )
     .into_response();
-    let realm = registry.realm.read().expect("realm lock");
+    let realm = format!("{}/token", registry.public_origin());
     let mut header = format!(
         "Bearer realm=\"{realm}\",service=\"{}\"",
         registry.auth.service
@@ -264,25 +290,47 @@ async fn token(
         .and_then(|v| v.strip_prefix("Basic "))
         .and_then(|v| base64::engine::general_purpose::STANDARD.decode(v).ok())
         .and_then(|v| String::from_utf8(v).ok());
-    let user = credentials
-        .as_deref()
-        .and_then(|v| v.split_once(':'))
-        .filter(|(u, p)| registry.auth.authenticate(u, p).is_ok());
-    let Some((user, _)) = user else {
-        let mut response = ApiError(
-            StatusCode::UNAUTHORIZED,
-            "UNAUTHORIZED",
-            "Invalid credentials".into(),
-        )
-        .into_response();
-        response.headers_mut().insert(
-            header::WWW_AUTHENTICATE,
-            "Basic realm=\"ifcx-oci\"".parse().expect("static header"),
-        );
-        return Ok(response);
-    };
-    let (token, claims) = registry.auth.issue(user, &scopes, TOKEN_SECONDS)?;
-    Ok(Json(json!({"token":token,"access_token":token,"expires_in":TOKEN_SECONDS,"subject":claims.sub,"access":claims.access})).into_response())
+    let user = credentials.as_deref().and_then(|v| v.split_once(':'));
+    if let Some((user, password)) = user {
+        match registry.password_login(user.into(), password.into()).await {
+            Ok(()) => {
+                let (token, claims) = registry.auth.issue(user, &scopes, TOKEN_SECONDS)?;
+                let mut reply = Json(json!({"token":token,"access_token":token,"expires_in":TOKEN_SECONDS,"subject":claims.sub,"access":claims.access})).into_response();
+                reply.headers_mut().insert(
+                    header::CACHE_CONTROL,
+                    "no-store".parse().expect("static header"),
+                );
+                return Ok(reply);
+            }
+            Err(PasswordLoginError::Throttled(seconds)) => return Ok(login_throttled(seconds)),
+            Err(PasswordLoginError::Unavailable) => {
+                return Ok(StatusCode::SERVICE_UNAVAILABLE.into_response())
+            }
+            Err(PasswordLoginError::InvalidCredentials) => {}
+        }
+    }
+    let mut response = ApiError(
+        StatusCode::UNAUTHORIZED,
+        "UNAUTHORIZED",
+        "Invalid credentials".into(),
+    )
+    .into_response();
+    response.headers_mut().insert(
+        header::WWW_AUTHENTICATE,
+        "Basic realm=\"ifcx-oci\"".parse().expect("static header"),
+    );
+    Ok(response)
+}
+
+pub(crate) fn login_throttled(seconds: u64) -> Response {
+    (
+        StatusCode::TOO_MANY_REQUESTS,
+        [
+            (header::RETRY_AFTER, seconds.to_string()),
+            (header::CACHE_CONTROL, "no-store".into()),
+        ],
+    )
+        .into_response()
 }
 
 fn response(status: StatusCode, body: impl Into<Body>, headers: &[(&str, String)]) -> Response {

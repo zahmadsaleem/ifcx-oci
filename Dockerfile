@@ -25,4 +25,4 @@ WORKDIR /data
 VOLUME ["/data"]
 EXPOSE 5000
 ENTRYPOINT ["/usr/local/bin/ifcx-oci"]
-CMD ["serve", "--data", "/data", "--listen", "127.0.0.1:5000"]
+CMD ["serve", "--data", "/data", "--listen", "0.0.0.0:5000"]

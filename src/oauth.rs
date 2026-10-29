@@ -16,7 +16,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
-use crate::{auth::now, registry::Registry};
+use crate::{
+    auth::{now, PasswordLoginError},
+    registry::Registry,
+};
 
 mod page;
 mod session;
@@ -52,6 +55,7 @@ struct Authorization {
     scope: String,
 }
 
+#[derive(Clone)]
 struct Pending {
     request: Authorization,
     cookie: String,
@@ -74,6 +78,21 @@ impl Store {
 }
 
 impl OAuth {
+    pub(crate) fn validate_transport(&self, https: bool) -> Result<()> {
+        let store = self
+            .inner
+            .lock()
+            .map_err(|_| anyhow::anyhow!("OAuth store lock failed"))?;
+        ensure!(
+            !https
+                || store
+                    .redirects
+                    .iter()
+                    .all(|uri| Url::parse(uri).is_ok_and(|u| u.scheme() == "https")),
+            "An HTTPS public URL requires exact HTTPS OAuth callback URLs"
+        );
+        Ok(())
+    }
     pub fn configure(&self, client_id: &str, redirects: &[String]) -> Result<()> {
         ensure!(
             !client_id.is_empty() && client_id.len() <= 128
@@ -215,7 +234,7 @@ async fn authorize(
     };
     let mut response = form(&id, &pending, "", "", false);
     response.headers_mut().insert(header::SET_COOKIE,
-        format!("ifcx_oauth_{id}={}; HttpOnly; SameSite=Strict; Path=/oauth/authorize; Max-Age={FORM_SECONDS}", pending.cookie)
+        format!("ifcx_oauth_{id}={}; HttpOnly; SameSite=Strict; Path=/oauth/authorize; Max-Age={FORM_SECONDS}{}", pending.cookie, if registry.secure_cookies() { "; Secure" } else { "" })
             .parse().expect("generated cookie"));
     store.forms.insert(id, pending);
     response
@@ -239,18 +258,19 @@ async fn consent(
     headers: HeaderMap,
     Form(input): Form<Consent>,
 ) -> Response {
-    let expected_origin = Url::parse(&registry.oauth_authorization_endpoint())
-        .map(|url| url.origin().ascii_serialization())
-        .unwrap_or_default();
+    let expected_origin = registry.public_origin();
     if headers.get(header::ORIGIN).and_then(|h| h.to_str().ok()) != Some(expected_origin.as_str()) {
         return error(StatusCode::FORBIDDEN, "invalid_request");
     }
-    let Ok(mut store) = registry.oauth.inner.lock() else {
-        return error(StatusCode::INTERNAL_SERVER_ERROR, "server_error");
-    };
-    store.prune();
-    let Some(pending) = store.forms.get(&input.request_id) else {
-        return error(StatusCode::BAD_REQUEST, "invalid_request");
+    let pending = {
+        let Ok(mut store) = registry.oauth.inner.lock() else {
+            return error(StatusCode::INTERNAL_SERVER_ERROR, "server_error");
+        };
+        store.prune();
+        let Some(pending) = store.forms.get(&input.request_id) else {
+            return error(StatusCode::BAD_REQUEST, "invalid_request");
+        };
+        pending.clone()
     };
     let expected = format!("ifcx_oauth_{}={}", input.request_id, pending.cookie);
     let has_cookie = headers
@@ -260,24 +280,36 @@ async fn consent(
     if !has_cookie || !matches!(input.decision.as_str(), "allow" | "deny") {
         return error(StatusCode::FORBIDDEN, "invalid_request");
     }
-    if input.decision == "allow"
-        && registry
-            .auth
-            .authenticate(&input.username, &input.password)
-            .is_err()
-    {
-        return form(
-            &input.request_id,
-            pending,
-            "Sign-in failed. Check your username and password.",
-            &input.username,
-            input.remember_me,
-        );
+    if input.decision == "allow" {
+        match registry
+            .password_login(input.username.clone(), input.password)
+            .await
+        {
+            Ok(()) => {}
+            Err(PasswordLoginError::Throttled(seconds)) => {
+                return hardened(crate::registry::login_throttled(seconds))
+            }
+            Err(PasswordLoginError::Unavailable) => {
+                return error(StatusCode::SERVICE_UNAVAILABLE, "temporarily_unavailable")
+            }
+            Err(PasswordLoginError::InvalidCredentials) => {
+                return form(
+                    &input.request_id,
+                    &pending,
+                    "Sign-in failed. Check your username and password.",
+                    &input.username,
+                    input.remember_me,
+                )
+            }
+        }
     }
-    let pending = store
-        .forms
-        .remove(&input.request_id)
-        .expect("validated pending form");
+    let Ok(mut store) = registry.oauth.inner.lock() else {
+        return error(StatusCode::INTERNAL_SERVER_ERROR, "server_error");
+    };
+    store.prune();
+    let Some(pending) = store.forms.remove(&input.request_id) else {
+        return error(StatusCode::BAD_REQUEST, "invalid_request");
+    };
     let mut redirect = Url::parse(&pending.request.redirect_uri).expect("registered redirect");
     redirect
         .query_pairs_mut()
@@ -303,8 +335,13 @@ async fn consent(
     response.headers_mut().insert(
         header::SET_COOKIE,
         format!(
-            "ifcx_oauth_{}=; HttpOnly; SameSite=Strict; Path=/oauth/authorize; Max-Age=0",
-            input.request_id
+            "ifcx_oauth_{}=; HttpOnly; SameSite=Strict; Path=/oauth/authorize; Max-Age=0{}",
+            input.request_id,
+            if registry.secure_cookies() {
+                "; Secure"
+            } else {
+                ""
+            }
         )
         .parse()
         .expect("generated cookie"),

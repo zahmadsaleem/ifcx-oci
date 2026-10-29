@@ -29,12 +29,15 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Serve a persistent, authenticated loopback OCI registry.
+    /// Serve a persistent, authenticated single-instance OCI registry.
     Serve {
         #[arg(long, default_value = "build/registry")]
         data: PathBuf,
         #[arg(long, default_value = "127.0.0.1:5000")]
         listen: SocketAddr,
+        /// External HTTPS origin (or loopback HTTP); required for non-loopback binding.
+        #[arg(long)]
+        public_url: Option<String>,
         /// Public OAuth client ID to register for browser login.
         #[arg(long, requires = "oauth_redirect_uris")]
         oauth_client_id: Option<String>,
@@ -236,6 +239,21 @@ fn print_list(entries: &[String]) -> Result<()> {
     Ok(())
 }
 
+fn shutdown_signal() -> Result<impl std::future::Future<Output = ()> + Send> {
+    #[cfg(unix)]
+    let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+    Ok(async move {
+        #[cfg(unix)]
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {},
+            _ = terminate.recv() => {},
+        }
+        #[cfg(not(unix))]
+        let _ = tokio::signal::ctrl_c().await;
+        eprintln!("Shutting down; draining active requests");
+    })
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -243,19 +261,23 @@ async fn main() -> Result<()> {
         Command::Serve {
             data,
             listen,
+            public_url,
             oauth_client_id,
             oauth_redirect_uris,
         } => {
             let registry = Registry::open(data)?;
+            if let Some(public_url) = public_url {
+                registry.set_public_url(&public_url)?;
+            }
             if let Some(client_id) = oauth_client_id {
                 registry.oauth.configure(&client_id, &oauth_redirect_uris)?;
             }
             let listener = registry::bind(listen).await?;
             eprintln!(
-                "Local OCI registry: http://{} (JWT authentication required)",
+                "OCI registry listening on http://{} (JWT authentication required)",
                 listener.local_addr()?
             );
-            tokio::select! {result=registry::serve(listener,registry)=>result?,result=tokio::signal::ctrl_c()=>result?,};
+            registry::serve_with_shutdown(listener, registry, shutdown_signal()?).await?;
         }
         Command::User { command } => match command {
             UserCommand::Add {

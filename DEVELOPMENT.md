@@ -49,9 +49,12 @@ docker volume create ifcx-oci-data
 docker run --rm -it -v ifcx-oci-data:/data ifcx-oci:dev \
   user add --data /data writer --grant project/model:pull,push
 
-# Linux, or Docker Desktop with host networking enabled.
-docker run --rm --network host -v ifcx-oci-data:/data ifcx-oci:dev \
-  serve --data /data --listen 127.0.0.1:5000 \
+docker run --rm -p 127.0.0.1:5000:5000 -v ifcx-oci-data:/data ifcx-oci:dev \
+  serve --data /data --listen 0.0.0.0:5000 --public-url http://localhost:5000 \
   --oauth-client-id model-client \
   --oauth-redirect-uri http://localhost:3000/oauth/callback
 ```
+
+Open the development registry as `http://localhost:5000`. For an HTTPS cloud
+ingress, persistent storage and one-off provisioning jobs, see the
+[deployment example](README.md#single-instance-cloud-test-deployment).

@@ -20,7 +20,9 @@ use uuid::Uuid;
 
 pub const TOKEN_SECONDS: u64 = 900;
 mod sessions;
+mod throttle;
 pub use sessions::{RefreshSession, SessionTokens, REMEMBER_SECONDS, SESSION_SECONDS};
+pub(crate) use throttle::PasswordLoginError;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Access {
@@ -45,6 +47,7 @@ pub struct Claims {
 
 pub struct Auth {
     db: Mutex<Connection>,
+    login_throttle: Mutex<throttle::LoginThrottle>,
     secret: Vec<u8>,
     pub service: String,
     issuer: String,
@@ -91,6 +94,19 @@ fn secret_file(path: &Path) -> Result<Vec<u8>> {
 }
 
 impl Auth {
+    pub(crate) fn check_ready(&self) -> Result<()> {
+        let mut db = self
+            .db
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Identity store lock failed"))?;
+        let tx = db.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        ensure!(
+            tx.execute("UPDATE settings SET value=value WHERE key='id'", [])? == 1,
+            "Missing registry identity"
+        );
+        tx.rollback()?;
+        Ok(())
+    }
     pub fn open(root: &Path) -> Result<Self> {
         fs::create_dir_all(root)?;
         #[cfg(unix)]
@@ -116,6 +132,7 @@ impl Auth {
         let secret = secret_file(&root.join("signing.key"))?;
         Ok(Self {
             db: Mutex::new(db),
+            login_throttle: Mutex::new(throttle::LoginThrottle::default()),
             secret,
             service: format!("ifcx-oci:{id}"),
             issuer: format!("urn:ifcx-oci:registry:{id}"),
@@ -192,6 +209,7 @@ impl Auth {
                 |r| r.get(0),
             )
             .context("Invalid credentials")?;
+        drop(db);
         let hash = PasswordHash::new(&hash)
             .map_err(|_| anyhow::anyhow!("Invalid stored password hash"))?;
         Argon2::default()
