@@ -19,6 +19,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 pub const TOKEN_SECONDS: u64 = 900;
+mod sessions;
+pub use sessions::{RefreshSession, SessionTokens, REMEMBER_SECONDS, SESSION_SECONDS};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Access {
@@ -37,6 +39,8 @@ pub struct Claims {
     pub iat: u64,
     pub jti: String,
     pub access: Vec<Access>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sid: Option<String>,
 }
 
 pub struct Auth {
@@ -101,6 +105,7 @@ impl Auth {
           CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY,value TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS users (name TEXT PRIMARY KEY,password_hash TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS grants (user TEXT NOT NULL REFERENCES users(name),repository TEXT NOT NULL,action TEXT NOT NULL CHECK(action IN ('pull','push')),PRIMARY KEY(user,repository,action));")?;
+        sessions::schema(&db)?;
         db.execute(
             "INSERT OR IGNORE INTO settings VALUES ('id',?1)",
             [Uuid::new_v4().to_string()],
@@ -208,6 +213,10 @@ impl Auth {
     }
 
     pub fn issue(&self, user: &str, scopes: &[String], ttl: u64) -> Result<(String, Claims)> {
+        self.sign_access(user, self.requested_access(user, scopes)?, ttl, None)
+    }
+
+    fn requested_access(&self, user: &str, scopes: &[String]) -> Result<Vec<Access>> {
         let mut access = Vec::new();
         // Discovery returns the account's exact grants, never a wildcard repository grant.
         if scopes.iter().any(|scope| scope == "registry:catalog:read") {
@@ -254,14 +263,28 @@ impl Auth {
                 actions: permitted,
             });
         }
+        Ok(access)
+    }
+
+    fn sign_access(
+        &self,
+        user: &str,
+        access: Vec<Access>,
+        ttl: u64,
+        session: Option<(&str, u64)>,
+    ) -> Result<(String, Claims)> {
+        let issued = now();
+        let expires = session.map_or(issued + ttl, |(_, deadline)| deadline.min(issued + ttl));
+        ensure!(session.is_none() || expires > issued, "Session has expired");
         let claims = Claims {
             iss: self.issuer.clone(),
             aud: self.service.clone(),
             sub: user.into(),
-            iat: now(),
-            exp: now() + ttl,
+            iat: issued,
+            exp: expires,
             jti: Uuid::new_v4().to_string(),
             access,
+            sid: session.map(|(id, _)| id.to_string()),
         };
         let token = encode(
             &Header::new(Algorithm::HS256),
@@ -293,6 +316,13 @@ impl Auth {
             |r| r.get(0),
         )?;
         ensure!(exists, "Unknown token subject");
+        if let Some(id) = &claims.sid {
+            let active: bool = db.query_row(
+                "SELECT EXISTS(SELECT 1 FROM oauth_sessions WHERE id=?1 AND user=?2 AND revoked=0 AND expires>?3)",
+                params![id, claims.sub, i64::try_from(now())?], |row| row.get(0),
+            )?;
+            ensure!(active, "Session has expired or been revoked");
+        }
         Ok(claims)
     }
 

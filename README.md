@@ -61,6 +61,11 @@ separately, so the model package keeps its original identity.
 
 ## Share your own model locally
 
+Browser applications can use a registry-owned sign-in page and OAuth
+Authorization Code with PKCE, so they do not collect registry passwords. See
+[application registration and login](DEVELOPMENT.md#connect-a-browser-application).
+The terminal examples below use the CLI's existing OCI account login.
+
 The following example runs on your own computer. `127.0.0.1` is its local address.
 Replace `/path/to/model.ifc` with the path to your IFC file.
 
@@ -114,8 +119,8 @@ ifcx-oci user add --data build/company-a reader --grant project/model:pull
 
 That user signs in with `--username reader --scope project/model:pull` and can
 receive from the same collection. Logins last 15 minutes; sign in again when
-needed. The [development guide](DEVELOPMENT.md#copy-between-two-registries) also
-shows how to copy a release to a second independent registry.
+needed. Use `ifcx-oci copy SOURCE DESTINATION` to copy a release to another
+registry after signing in to both.
 
 ## What to expect
 
@@ -130,8 +135,8 @@ project still requires your own checks. Live editing and merging remain part of
 the applications' workflows.
 
 The bundled registry is for local use on your computer. A shared team service
-needs an appropriately operated registry. Build instructions, format details,
-security and deployment limits are in [DEVELOPMENT.md](DEVELOPMENT.md).
+needs an appropriately operated registry. Build and container commands are in
+[DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## License
 
