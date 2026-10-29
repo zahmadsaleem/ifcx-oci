@@ -57,4 +57,4 @@ docker run --rm -p 127.0.0.1:5000:5000 -v ifcx-oci-data:/data ifcx-oci:dev \
 
 Open the development registry as `http://localhost:5000`. For an HTTPS cloud
 ingress, persistent storage and one-off provisioning jobs, see the
-[deployment example](README.md#single-instance-cloud-test-deployment).
+[deployment guide](DEPLOYMENT.md).
