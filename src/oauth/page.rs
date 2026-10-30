@@ -2,7 +2,7 @@
 use axum::response::{Html, Response};
 use reqwest::Url;
 
-use super::{hardened, Pending};
+use super::{hardened, Pending, EXPLORER_CLIENT};
 
 fn escape(value: &str) -> String {
     value
@@ -42,12 +42,20 @@ pub(super) fn form(
         (false, true) => "Publish new artifact versions",
         _ => "Connect your account",
     };
-    let access = if actions.contains(&"session") {
+    let explorer = pending.request.client_id == EXPLORER_CLIENT;
+    let access = if explorer {
+        "Browse artifacts with read-only access for this tab."
+    } else if actions.contains(&"session") {
         "Approve current account permissions, including future repositories matching your wildcard grants. Additional permissions require approval again."
     } else {
         access
     };
     let html = include_str!("login.html")
+        .replace("{{remember_hidden}}", if explorer { "hidden" } else { "" })
+        .replace(
+            "{{remember_disabled}}",
+            if explorer { "disabled" } else { "" },
+        )
         .replace(
             "{{remember_checked}}",
             if remember { "checked" } else { "" },

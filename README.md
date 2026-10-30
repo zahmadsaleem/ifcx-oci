@@ -79,6 +79,14 @@ subsoil user add --data build/company-a writer \
 subsoil serve --data build/company-a --listen 127.0.0.1:5000
 ```
 
+You can also open `http://127.0.0.1:5000/explore` to browse the registry.
+The embedded, read-only explorer lists repositories and tags in searchable pages
+of 20, with publication details, files and manifest JSON for each artifact.
+Search covers all names you can access; results are sorted by name.
+Sign in with your registry account;
+the explorer session lasts up to eight hours in that tab. Use **Copy reference**
+to copy an exact artifact reference for another tool.
+
 Keep that terminal open. In a second terminal, sign in:
 
 ```sh

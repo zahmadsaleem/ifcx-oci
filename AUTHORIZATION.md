@@ -151,6 +151,12 @@ challenge flow. `registry:catalog:read` grants listing only. The optional
 within the caller's approval and current account policy. It omits repository
 names outside that approval and does not expand wildcard rules into access.
 
+Repository and tag listings accept Distribution pagination parameters `n` (1–1000)
+and `last`, with a `Link` header for the next page. The optional Subsoil `q`
+parameter filters names by a case-insensitive substring before paging. Listing
+and search results include only authorized content. Tag requests without `n`
+retain the unpaged response.
+
 ## Expiring shares
 
 A share delegates a subset of an approved account policy to anyone holding its

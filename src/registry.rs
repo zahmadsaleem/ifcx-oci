@@ -29,6 +29,7 @@ use crate::release::{digest, digest_hex};
 mod access;
 mod cors;
 mod discovery;
+mod explorer;
 mod public_url;
 mod publication;
 mod shares;
@@ -124,6 +125,7 @@ pub fn router(registry: Arc<Registry>) -> Router {
         api = api.layer(cors.clone());
     }
     api.merge(crate::oauth::router_with_cors(cors))
+        .merge(explorer::router())
         .route("/share", get(shares::landing))
         .route("/healthz", get(|| async { StatusCode::OK }))
         .route("/readyz", get(ready))
@@ -771,8 +773,10 @@ async fn endpoint(
                 Vec::new()
             };
             tags.retain(|tag| visible.contains(tag));
-            tags.sort();
-            return Ok(Json(json!({"name":repo,"tags":tags})).into_response());
+            // Preserve the unpaged response for callers that do not request n.
+            let (tags, next) =
+                discovery::page(tags, &query, usize::MAX, &format!("/v2/{repo}/tags/list"))?;
+            return Ok(discovery::listing(json!({"name":repo,"tags":tags}), next));
         }
     } else {
         return Err(ApiError::missing("NAME_UNKNOWN"));

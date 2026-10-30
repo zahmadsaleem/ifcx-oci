@@ -11,7 +11,7 @@ use reqwest::Url;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{error, hardened, Code, Exchange};
+use super::{error, hardened, Code, Exchange, EXPLORER_CLIENT};
 use crate::{
     auth::{now, RefreshSession, SessionTokens},
     registry::Registry,
@@ -51,9 +51,8 @@ fn binding(
     headers: &HeaderMap,
 ) -> bool {
     registry.oauth.inner.lock().is_ok_and(|store| {
-        store.client_id == client_id
+        store.registered(client_id, &session.redirect_uri, &registry.public_origin())
             && session.client_id == client_id
-            && store.redirects.contains(&session.redirect_uri)
             && session.remember == cookie_mode
             && (!cookie_mode || same_origin(headers, &session.redirect_uri))
     })
@@ -127,9 +126,15 @@ pub(super) fn initial(
     if code.remember && !same_origin(headers, &code.request.redirect_uri) {
         return error(StatusCode::FORBIDDEN, "invalid_request");
     }
-    let previous = match cookie(headers) {
-        Ok(value) => value,
-        Err(()) => return error(StatusCode::BAD_REQUEST, "invalid_request"),
+    let explorer = code.request.client_id == EXPLORER_CLIENT;
+    // Tab-only explorer sessions leave other applications' remembered cookies intact.
+    let previous = if explorer {
+        None
+    } else {
+        match cookie(headers) {
+            Ok(value) => value,
+            Err(()) => return error(StatusCode::BAD_REQUEST, "invalid_request"),
+        }
     };
     if let Some(previous) = previous {
         if !same_origin(headers, &code.request.redirect_uri) {
@@ -150,7 +155,7 @@ pub(super) fn initial(
         &code.request.redirect_uri,
         code.remember,
     ) {
-        Ok(tokens) => reply(tokens, true),
+        Ok(tokens) => reply(tokens, !explorer),
         Err(_) => error(StatusCode::BAD_REQUEST, "invalid_grant"),
     }
 }

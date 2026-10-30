@@ -28,6 +28,7 @@ use page::form;
 const FORM_SECONDS: u64 = 300;
 const CODE_SECONDS: u64 = 60;
 const MAX_PENDING: usize = 1024;
+pub(crate) const EXPLORER_CLIENT: &str = "subsoil-explorer";
 
 #[derive(Default)]
 pub struct OAuth {
@@ -71,6 +72,15 @@ struct Code {
 }
 
 impl Store {
+    fn registered(&self, client: &str, redirect: &str, origin: &str) -> bool {
+        if client == EXPLORER_CLIENT {
+            return !origin.is_empty() && redirect == format!("{origin}/explore");
+        }
+        !self.client_id.is_empty()
+            && client == self.client_id
+            && self.redirects.iter().any(|uri| uri == redirect)
+    }
+
     fn prune(&mut self) {
         let time = now();
         self.forms.retain(|_, p| p.expires > time);
@@ -95,6 +105,10 @@ impl OAuth {
         Ok(())
     }
     pub fn configure(&self, client_id: &str, redirects: &[String]) -> Result<()> {
+        ensure!(
+            client_id != EXPLORER_CLIENT,
+            "Client ID is reserved for the registry explorer"
+        );
         ensure!(
             !client_id.is_empty() && client_id.len() <= 128
                 && client_id.bytes().all(|b| b.is_ascii_alphanumeric() || b"-._~".contains(&b)),
@@ -222,9 +236,11 @@ async fn authorize(
         return error(StatusCode::INTERNAL_SERVER_ERROR, "server_error");
     };
     // Never redirect an invalid authorization request, especially a bad redirect URI.
-    if store.client_id.is_empty()
-        || request.client_id != store.client_id
-        || !store.redirects.contains(&request.redirect_uri)
+    if !store.registered(
+        &request.client_id,
+        &request.redirect_uri,
+        &registry.public_origin(),
+    ) || (request.client_id == EXPLORER_CLIENT && request.scope != crate::auth::SESSION_SCOPE)
         || request.response_type != "code"
         || request.code_challenge_method != "S256"
         || request.state.is_empty()
@@ -335,10 +351,18 @@ async fn consent(
             .query_pairs_mut()
             .append_pair("error", "access_denied");
     } else {
-        let permissions = match registry.auth.grants(&input.username) {
+        let mut permissions = match registry.auth.grants(&input.username) {
             Ok(p) => p,
             Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "server_error"),
         };
+        // The embedded explorer can only receive artifacts, even for a publisher account.
+        let explorer = pending.request.client_id == EXPLORER_CLIENT;
+        if explorer {
+            for grant in &mut permissions {
+                grant.actions.retain(|action| action == "pull");
+            }
+            permissions.retain(|grant| !grant.actions.is_empty());
+        }
         let code = random();
         redirect.query_pairs_mut().append_pair("code", &code);
         store.codes.insert(
@@ -348,7 +372,7 @@ async fn consent(
                 request: pending.request,
                 user: input.username,
                 expires: now() + CODE_SECONDS,
-                remember: input.remember_me,
+                remember: input.remember_me && !explorer,
             },
         );
     }
