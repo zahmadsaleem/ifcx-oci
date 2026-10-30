@@ -1,10 +1,5 @@
 //! Ingress-facing contracts over the private HTTP hop, plus real CLI lifecycle.
 use anyhow::{ensure, Result};
-use ifcx_oci::{
-    oauth::challenge,
-    registry::{self, Registry},
-    release::digest,
-};
 use reqwest::{Client, Response, Url};
 use serde_json::Value;
 use std::{
@@ -15,6 +10,11 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use subsoil::{
+    oauth::challenge,
+    registry::{self, Registry},
+    release::digest,
+};
 
 const PUBLIC: &str = "https://registry.example.com";
 const CALLBACK: &str = "https://app.example/oauth/callback";
@@ -22,7 +22,7 @@ const PASSWORD: &str = "deployment-test-password";
 const VERIFIER: &str = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
 
 fn provision(data: &Path) -> Result<()> {
-    let mut job = Command::new(env!("CARGO_BIN_EXE_ifcx-oci"))
+    let mut job = Command::new(env!("CARGO_BIN_EXE_subsoil"))
         .args(["user", "add", "--data"])
         .arg(data)
         .args(["writer", "--password-stdin"])
@@ -32,7 +32,7 @@ fn provision(data: &Path) -> Result<()> {
     writeln!(job.stdin.take().unwrap(), "{PASSWORD}")?;
     ensure!(job.wait()?.success(), "user add failed");
     ensure!(
-        Command::new(env!("CARGO_BIN_EXE_ifcx-oci"))
+        Command::new(env!("CARGO_BIN_EXE_subsoil"))
             .args(["user", "grant", "--data"])
             .arg(data)
             .args(["writer", "project/model:pull,push"])
@@ -308,7 +308,7 @@ async fn public_origin_proxy_login_readiness_throttling_and_remembered_restart()
         .registry
         .auth
         .service
-        .strip_prefix("ifcx-oci:")
+        .strip_prefix("subsoil:")
         .unwrap();
     db.execute("INSERT INTO settings VALUES ('id',?1)", [service])?;
     assert_eq!(
@@ -422,7 +422,7 @@ async fn sigterm_drains_an_inflight_oci_upload() -> Result<()> {
     let data = root.path().join("registry");
     provision(&data)?;
     let mut process = Process(
-        Command::new(env!("CARGO_BIN_EXE_ifcx-oci"))
+        Command::new(env!("CARGO_BIN_EXE_subsoil"))
             .args(["serve", "--data"])
             .arg(&data)
             .args(["--listen", "127.0.0.1:0"])

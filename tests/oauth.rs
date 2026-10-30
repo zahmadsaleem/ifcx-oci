@@ -1,10 +1,10 @@
 use anyhow::Result;
-use ifcx_oci::{
+use reqwest::{Client, Url};
+use serde_json::Value;
+use subsoil::{
     oauth::challenge,
     registry::{self, Registry},
 };
-use reqwest::{Client, Url};
-use serde_json::Value;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn browser_consent_pkce_cookie_csrf_denial_and_scoped_registry_session() -> Result<()> {

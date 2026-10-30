@@ -1,17 +1,17 @@
 use anyhow::Result;
-use ifcx_oci::{
+use serde_json::json;
+use std::{fs, path::PathBuf};
+use subsoil::{
     client::{Client, Reference},
     registry::{self, Registry},
     release,
 };
-use serde_json::json;
-use std::{fs, path::PathBuf};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn actual_two_registry_showcase_and_scope_denials() -> Result<()> {
     let temp = tempfile::tempdir()?;
-    let oras = std::env::var_os("IFCX_TEST_ORAS").map(PathBuf::from);
-    let report = ifcx_oci::demo::run(&temp.path().join("showcase"), oras.as_deref()).await?;
+    let oras = std::env::var_os("SUBSOIL_TEST_ORAS").map(PathBuf::from);
+    let report = subsoil::demo::run(&temp.path().join("showcase"), oras.as_deref()).await?;
     assert_eq!(report["valid"], true);
     assert_eq!(report["authorization"]["readerPushDenied"], true);
     assert_eq!(report["authorization"]["crossRepositoryDenied"], true);

@@ -1,5 +1,5 @@
 {
-  description = "IFClite artifacts and an authenticated local OCI registry in one Rust binary";
+  description = "Subsoil artifact exchange and an authenticated local OCI registry";
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
   outputs = { self, nixpkgs }:
     let
@@ -8,7 +8,7 @@
       packageFor = system:
         let pkgs = import nixpkgs { inherit system; };
         in pkgs.rustPlatform.buildRustPackage {
-          pname = "ifcx-oci";
+          pname = "subsoil";
           version = "0.2.0";
           src = pkgs.lib.cleanSourceWith {
             src = ./.;
@@ -25,7 +25,7 @@
           nativeBuildInputs = [ pkgs.pkg-config ];
           # Networked integration tests run explicitly through the demo app.
           cargoTestFlags = [ "--lib" ];
-          meta.mainProgram = "ifcx-oci";
+          meta.mainProgram = "subsoil";
           meta.license = pkgs.lib.licenses.asl20;
         };
     in {
@@ -34,12 +34,12 @@
         let
           pkgs = import nixpkgs { inherit system; };
           package = packageFor system;
-          demo = pkgs.writeShellScriptBin "ifcx-showcase" ''
-            exec ${package}/bin/ifcx-oci demo --oras ${pkgs.oras}/bin/oras "$@"
+          demo = pkgs.writeShellScriptBin "subsoil-showcase" ''
+            exec ${package}/bin/subsoil demo --oras ${pkgs.oras}/bin/oras "$@"
           '';
         in {
-          default = { type = "app"; program = "${package}/bin/ifcx-oci"; meta.description = "IFC artifacts and a scoped local OCI registry"; };
-          demo = { type = "app"; program = "${demo}/bin/ifcx-showcase"; meta.description = "Authenticated two-registry showcase with ORAS"; };
+          default = { type = "app"; program = "${package}/bin/subsoil"; meta.description = "IFC artifacts and a scoped local OCI registry"; };
+          demo = { type = "app"; program = "${demo}/bin/subsoil-showcase"; meta.description = "Authenticated two-registry showcase with ORAS"; };
         });
       devShells = eachSystem (system:
         let pkgs = import nixpkgs { inherit system; };

@@ -21,8 +21,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
-pub const PROFILE: &str = "urn:ifcx-oci:profile:0.2";
-pub const ARTIFACT_TYPE: &str = "application/vnd.ifcx-oci.model.v0.2";
+pub const PROFILE: &str = "urn:subsoil:profile:0.2";
+pub const ARTIFACT_TYPE: &str = "application/vnd.subsoil.model.v0.2";
 pub const IFCLITE_REV: &str = "9d154898de31fe91eb46f0200f2b3634c8c592f1";
 pub const PARQUET_TYPE: &str = "application/vnd.apache.parquet";
 pub const TABLES: &[&str] = &[
@@ -382,7 +382,7 @@ pub fn convert(
         .unwrap_or_else(|| Path::new("."));
     fs::create_dir_all(parent)?;
     let stage = tempfile::Builder::new()
-        .prefix(".ifcx-release-")
+        .prefix(".subsoil-release-")
         .tempdir_in(parent)?;
     let root = stage.path();
     let mut files = Vec::new();

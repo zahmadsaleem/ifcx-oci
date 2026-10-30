@@ -1,21 +1,21 @@
 use anyhow::{ensure, Result};
 use clap::{Parser, Subcommand, ValueEnum};
-use ifcx_oci::{
-    client::{Client, Reference},
-    registry::{self, Registry},
-    release,
-};
 use std::{
     fs,
     io::{self, Read, Write},
     net::SocketAddr,
     path::{Path, PathBuf},
 };
+use subsoil::{
+    client::{Client, Reference},
+    registry::{self, Registry},
+    release,
+};
 
 #[derive(Parser)]
 #[command(
     version,
-    about = "IFClite model artifacts, scoped OCI clients and a local registry in one binary"
+    about = "Subsoil artifact exchange, scoped OCI client and local registry"
 )]
 struct Cli {
     #[arg(long, global = true, default_value = "build/client-auth.json")]
@@ -48,7 +48,7 @@ enum Command {
         #[arg(long = "oauth-redirect-uri", requires = "oauth_client_id")]
         oauth_redirect_uris: Vec<String>,
         /// Maximum lifetime of a share, in seconds.
-        #[arg(long, default_value_t = ifcx_oci::auth::DEFAULT_SHARE_MAX_SECONDS)]
+        #[arg(long, default_value_t = subsoil::auth::DEFAULT_SHARE_MAX_SECONDS)]
         share_max_age: u64,
     },
     /// Manage local registry users and repository policies.
@@ -92,7 +92,7 @@ enum Command {
         source: String,
         #[arg(long)]
         output: PathBuf,
-        /// ifcx-oci convenience: select an exact layer path; repeat for several.
+        /// subsoil convenience: select an exact layer path; repeat for several.
         #[arg(long = "layer", value_name = "PATH")]
         layers: Vec<String>,
     },
@@ -252,7 +252,7 @@ enum ShareCommand {
         binding: Binding,
         #[arg(long)]
         public_url: String,
-        #[arg(long, default_value_t = ifcx_oci::auth::DEFAULT_SHARE_MAX_SECONDS)]
+        #[arg(long, default_value_t = subsoil::auth::DEFAULT_SHARE_MAX_SECONDS)]
         share_max_age: u64,
     },
     List {
@@ -377,15 +377,15 @@ async fn main() -> Result<()> {
                 registry
                     .share_max_age
                     .store(share_max_age, std::sync::atomic::Ordering::Relaxed);
-                let policy = ifcx_oci::policy::GrantSet::parse(&fs::read(grants)?)?;
+                let policy = subsoil::policy::GrantSet::parse(&fs::read(grants)?)?;
                 let origin = reqwest::Url::parse(&public_url)?;
                 ensure!(
                     policy.registry == origin.authority(),
                     "Grant registry does not match the public URL"
                 );
                 let binding = match binding {
-                    Binding::Snapshot => ifcx_oci::auth::ShareBinding::Snapshot,
-                    Binding::Live => ifcx_oci::auth::ShareBinding::Live,
+                    Binding::Snapshot => subsoil::auth::ShareBinding::Snapshot,
+                    Binding::Live => subsoil::auth::ShareBinding::Live,
                 };
                 let created = registry
                     .create_share(&username, &policy, ttl, binding)
@@ -414,7 +414,7 @@ async fn main() -> Result<()> {
                     username,
                     file,
                 } => {
-                    let policy = ifcx_oci::policy::GrantSet::parse(&fs::read(file)?)?;
+                    let policy = subsoil::policy::GrantSet::parse(&fs::read(file)?)?;
                     Registry::open(data)?.auth.set_grants(&username, &policy)?;
                     print(&policy)?;
                 }
@@ -579,7 +579,7 @@ async fn main() -> Result<()> {
             print(&serde_json::json!({"digest":client.copy(&source,&destination).await?}))?;
         }
         Command::Demo { output, oras } => {
-            print(&ifcx_oci::demo::run(&output, oras.as_deref()).await?)?
+            print(&subsoil::demo::run(&output, oras.as_deref()).await?)?
         }
     }
     Ok(())

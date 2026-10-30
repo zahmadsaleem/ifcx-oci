@@ -8,21 +8,21 @@ exact HTTPS callback URL, including its path and trailing slash if present.
 
 ## Start the registry
 
-Build the image with `docker build -t ifcx-oci:dev .`. Provision accounts with the
+Build the image with `docker build -t subsoil:dev .`. Provision accounts with the
 existing CLI by running the same distroless image as a one-off job. Its entrypoint
 is the binary; no shell or admin API is needed. These examples use Docker, with
 the same `/data` volume and UID/GID **65532:65532** for every job and server:
 
 ```sh
-docker volume create ifcx-oci-data
-docker run --rm -it --user 65532:65532 -v ifcx-oci-data:/data ifcx-oci:dev \
+docker volume create subsoil-data
+docker run --rm -it --user 65532:65532 -v subsoil-data:/data subsoil:dev \
   user add --data /data writer
-docker run --rm --user 65532:65532 -v ifcx-oci-data:/data ifcx-oci:dev \
+docker run --rm --user 65532:65532 -v subsoil-data:/data subsoil:dev \
   user grant --data /data writer project/model:pull,push
 
 # Publish only to the local ingress; in a cloud service, use a private backend.
-docker run -d --name ifcx-registry --restart unless-stopped --stop-timeout 60 \
-  --user 65532:65532 -p 127.0.0.1:5000:5000 -v ifcx-oci-data:/data ifcx-oci:dev \
+docker run -d --name subsoil-registry --restart unless-stopped --stop-timeout 60 \
+  --user 65532:65532 -p 127.0.0.1:5000:5000 -v subsoil-data:/data subsoil:dev \
   serve --data /data --listen 0.0.0.0:5000 \
   --public-url https://registry.example.com \
   --oauth-client-id model-client \
@@ -52,7 +52,7 @@ with the server stopped or using a consistent volume snapshot. The Docker smoke
 check below verifies that accounts, grants, remembered sessions, existing bearer
 tokens and pushed artifacts survive replacement on the same volume.
 
-The store uses format `ifcx-oci-registry/2`. Other experimental store formats
+The store uses format `subsoil-registry/2`. Other experimental store formats
 require a fresh directory.
 
 ## Application login
@@ -65,7 +65,7 @@ loopback public URL for local development. Non-loopback listeners require an
 explicit public URL.
 
 For browser applications, fetch `/oauth/config` and use Authorization Code with
-PKCE S256 and request `ifcx:session`. Exchange the approved session root at
+PKCE S256 and request `subsoil:session`. Exchange the approved session root at
 `/token` for concrete repository tokens before making artifact requests. The password page is on the registry's public origin. Proxy the
 application's `/oauth/token` and `/oauth/revoke` routes to the registry routes of
 the same name. Preserve the browser's `Origin` (the registered callback's origin),
@@ -93,7 +93,7 @@ OPTIONS preflights. GET, HEAD, POST, PUT, PATCH, DELETE and OPTIONS are allowed,
 with Authorization, Accept, Content-Type, Content-Range and Range request headers.
 The browser can read WWW-Authenticate, Location, Link, Range, Content-Range,
 Retry-After, Docker-Content-Digest, Docker-Distribution-API-Version,
-Docker-Upload-UUID and the ifcx-registry publication headers. Responses vary by
+Docker-Upload-UUID and the subsoil-registry publication headers. Responses vary by
 Origin and the preflight method/headers. The registry password/consent page and
 health probes do not receive CORS access; sign-in still opens the registry's page.
 CORS does not replace bearer-token authorization or grant repository permissions.
@@ -145,8 +145,8 @@ Verify the image and a real TLS ingress/application proxy locally:
 
 ```sh
 cargo test --locked --test deployment --test oauth_sessions --test showcase
-docker build -t ifcx-oci:cloud-test .
-python3 tests/cloud_smoke.py ifcx-oci:cloud-test
+docker build -t subsoil:cloud-test .
+python3 tests/cloud_smoke.py subsoil:cloud-test
 ```
 
 The smoke check requires Docker, Python 3 and `openssl`, trusts its temporary

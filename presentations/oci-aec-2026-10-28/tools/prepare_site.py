@@ -20,7 +20,7 @@ TITLES = (
     "Many focused apps. One shared release.",
     "Compatible connections. Independent owners.",
     "Start with the IFC file we already have.",
-    "An IFCX release, carried as an OCI artifact.",
+    "A Subsoil release, carried as an OCI artifact.",
     "One interface. Many ways to run it.",
     "Know exactly which release you received.",
     "Changes deserve their own artifacts.",
@@ -31,7 +31,7 @@ TITLES = (
 )
 PUBLIC_FILES = (
     "index.html", "speaker-notes.html", "preview.html", "sources.json",
-    "oci-ifcx-manifest.example.json", "ifcx-profile-config.example.json",
+    "oci-subsoil-manifest.example.json", "subsoil-profile-config.example.json",
     "previews/overview.png",
     *(f"previews/slide-{number:02}.png" for number in range(1, len(TITLES) + 1)),
 )
@@ -123,7 +123,7 @@ def validate_bundle(root):
             assert not local.startswith("/") and ".." not in Path(local).parts
             assert local in PUBLIC_FILES, f"Unpublished relative resource: {target}"
             links.add(local)
-    for name in ("sources.json", "oci-ifcx-manifest.example.json", "ifcx-profile-config.example.json"):
+    for name in ("sources.json", "oci-subsoil-manifest.example.json", "subsoil-profile-config.example.json"):
         json.loads((root / name).read_text())
     sources = json.loads((root / "sources.json").read_text())
     assert sources["presented_slides"] == len(TITLES)

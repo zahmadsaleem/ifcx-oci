@@ -150,8 +150,8 @@ impl Auth {
             db: Mutex::new(db),
             login_throttle: Mutex::new(throttle::LoginThrottle::default()),
             secret,
-            service: format!("ifcx-oci:{id}"),
-            issuer: format!("urn:ifcx-oci:registry:{id}"),
+            service: format!("subsoil:{id}"),
+            issuer: format!("urn:subsoil:registry:{id}"),
         })
     }
 

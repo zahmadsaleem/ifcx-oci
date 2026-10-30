@@ -1,8 +1,8 @@
-# ifcx-oci
+# Subsoil
 
 **Share an IFC model release between tools and organizations through a common registry.**
 
-[Read the pitch](https://madsolame.com/ifcx-oci/).
+[Read the pitch](https://madsolame.com/subsoil/).
 
 Think of a registry as a company's data reservoir. Models, requirements, drawings
 and other kinds of data can each have their own tank. Different applications can
@@ -14,17 +14,17 @@ those files. Tools still need to agree on what the files mean. The aim is for
 organizations to control their data while people choose the tools that suit their
 work.
 
-`ifcx-oci` is one program that can run a local registry, prepare a model release,
+`subsoil` is one program that can run a local registry, prepare a model release,
 publish it, receive it and check that its files arrived intact. A release is a
 snapshot of model data and geometry that can be shared and referred to later.
 
 ## Try the example
 
-These examples assume `ifcx-oci` is available in your terminal. If you need to
+These examples assume `subsoil` is available in your terminal. If you need to
 build or set it up, see the [development guide](DEVELOPMENT.md).
 
 ```sh
-ifcx-oci demo --output build/showcase
+subsoil demo --output build/showcase
 ```
 
 The demo creates a small example IFC model, starts two separate registries on
@@ -74,15 +74,15 @@ then start the registry. Choose a password of at least 12 characters when asked;
 it will not be shown while you type.
 
 ```sh
-ifcx-oci user add --data build/company-a writer \
+subsoil user add --data build/company-a writer \
   --grant project/model:pull,push
-ifcx-oci serve --data build/company-a --listen 127.0.0.1:5000
+subsoil serve --data build/company-a --listen 127.0.0.1:5000
 ```
 
 Keep that terminal open. In a second terminal, sign in:
 
 ```sh
-ifcx-oci --plain-http login 127.0.0.1:5000 \
+subsoil --plain-http login 127.0.0.1:5000 \
   --username writer --scope project/model:pull,push
 ```
 
@@ -94,16 +94,16 @@ use. Signing in does not give access beyond the user's permissions.
 Prepare, check and publish your release:
 
 ```sh
-ifcx-oci convert /path/to/model.ifc --output build/release --model-id design
-ifcx-oci verify build/release
-ifcx-oci --plain-http push build/release 127.0.0.1:5000/project/model:issued
+subsoil convert /path/to/model.ifc --output build/release --model-id design
+subsoil verify build/release
+subsoil --plain-http push build/release 127.0.0.1:5000/project/model:issued
 ```
 
 Publishing prints a fingerprint called a **digest**, beginning with `sha256:`.
 Copy that whole value and replace `DIGEST` below to receive that exact release:
 
 ```sh
-ifcx-oci --plain-http pull 127.0.0.1:5000/project/model@DIGEST \
+subsoil --plain-http pull 127.0.0.1:5000/project/model@DIGEST \
   --output build/received
 ```
 
@@ -115,18 +115,18 @@ output folder.
 To create a user who can only receive releases:
 
 ```sh
-ifcx-oci user add --data build/company-a reader --grant project/model:pull
+subsoil user add --data build/company-a reader --grant project/model:pull
 ```
 
 In the CLI, that user signs in with:
 
 ```sh
-ifcx-oci --plain-http login 127.0.0.1:5000 \
+subsoil --plain-http login 127.0.0.1:5000 \
   --username reader --scope project/model:pull
 ```
 
 CLI tokens expire after 15 minutes and do not renew automatically; run `login`
-again when needed. Use `ifcx-oci copy SOURCE DESTINATION` to copy a release to
+again when needed. Use `subsoil copy SOURCE DESTINATION` to copy a release to
 another registry after signing in to both.
 
 For JSON policies spanning repositories or tags, browser approval and token

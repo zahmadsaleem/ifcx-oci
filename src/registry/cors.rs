@@ -62,10 +62,10 @@ impl Registry {
                     header::HeaderName::from_static("docker-content-digest"),
                     header::HeaderName::from_static("docker-distribution-api-version"),
                     header::HeaderName::from_static("docker-upload-uuid"),
-                    header::HeaderName::from_static("ifcx-registry-publisher"),
-                    header::HeaderName::from_static("ifcx-registry-share-id"),
-                    header::HeaderName::from_static("ifcx-registry-created-by"),
-                    header::HeaderName::from_static("ifcx-registry-pushed-at"),
+                    header::HeaderName::from_static("subsoil-registry-publisher"),
+                    header::HeaderName::from_static("subsoil-registry-share-id"),
+                    header::HeaderName::from_static("subsoil-registry-created-by"),
+                    header::HeaderName::from_static("subsoil-registry-pushed-at"),
                 ])
         });
         *self

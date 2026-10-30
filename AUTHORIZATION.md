@@ -1,6 +1,6 @@
-# Repository authorization and sharing
+# Subsoil authorization and sharing
 
-The registry controls access to repositories and the artifacts published in them.
+Subsoil controls access to repositories and the artifacts published in them.
 An account's JSON policy defines what it may read or publish. Browser sessions
 and share credentials derive their permissions from that policy, while ordinary
 OCI clients use concrete repository tokens. The registry checks the effective
@@ -112,7 +112,7 @@ Browser sign-in approves an account policy once, then obtains repository tokens
 as the application needs them:
 
 1. Fetch `GET /oauth/config` and use the advertised Authorization Code flow with
-   PKCE S256. Request `ifcx:session` and open the registry's own sign-in page.
+   PKCE S256. Request `subsoil:session` and open the registry's own sign-in page.
 2. At consent, the registry captures the account's current rules. The resulting
    session root credential has catalog access and returns those rules in the
    token response's `permissions` field.
@@ -120,7 +120,7 @@ as the application needs them:
 4. Send the repository token with artifact requests. Keep the root for token
    exchange, catalog discovery, and share management.
 
-The configuration advertises `session_scope: "ifcx:session"` and
+The configuration advertises `session_scope: "subsoil:session"` and
 `scoped_token_endpoint: "/token"`. An exchange looks like:
 
 ```http
@@ -147,7 +147,7 @@ cookie forwarding, and CORS configuration are covered in
 
 Ordinary ORAS login, push, pull, and copy retain the standard Basic/Bearer
 challenge flow. `registry:catalog:read` grants listing only. The optional
-`ifcx:catalog:grants` extension additionally bundles concrete repository grants
+`subsoil:catalog:grants` extension additionally bundles concrete repository grants
 within the caller's approval and current account policy. It omits repository
 names outside that approval and does not expand wildcard rules into access.
 
@@ -254,9 +254,13 @@ Share state and revocation survive server restart.
 
 Publications made through a share identify the publisher as `share:<id>` and
 record its creator separately. Authorized manifest responses expose
-`ifcx-registry-publisher`, `ifcx-registry-pushed-at`, `ifcx-registry-share-id`, and
-`ifcx-registry-created-by`. Publication records remain separate from immutable
-manifest bytes.
+`subsoil-registry-publisher`, `subsoil-registry-pushed-at`, `subsoil-registry-share-id`, and
+`subsoil-registry-created-by`. Publication records remain separate from immutable
+manifest bytes. Session and share token responses advertise the publisher and
+timestamp header names in the optional `publication_headers` object, with
+`publisher` and `pushed_at` keys. Clients can read those names without depending
+on the backend's product identity. These metadata fields are extensions to the
+token response, rather than standard OCI provenance.
 
 ## Provisioning and deployment
 
@@ -264,10 +268,10 @@ Account administration APIs are deferred. The CLI provides local demo and
 operator access to the same JSON policy model:
 
 ```sh
-ifcx-oci user add --data /var/lib/ifcx-oci alice
-ifcx-oci user grants set --data /var/lib/ifcx-oci alice grants.json
-ifcx-oci user grants list --data /var/lib/ifcx-oci alice
-ifcx-oci user grants remove --data /var/lib/ifcx-oci alice 12
+subsoil user add --data /var/lib/subsoil alice
+subsoil user grants set --data /var/lib/subsoil alice grants.json
+subsoil user grants list --data /var/lib/subsoil alice
+subsoil user grants remove --data /var/lib/subsoil alice 12
 ```
 
 `set` atomically replaces an account's grants. Importing a policy binds the store
@@ -278,10 +282,10 @@ for exact repository-wide rules.
 Shares can also be provisioned locally with the same policy document:
 
 ```sh
-ifcx-oci share create --data /var/lib/ifcx-oci alice \
+subsoil share create --data /var/lib/subsoil alice \
   --grants share.json --ttl 86400 --public-url https://registry.example.com
-ifcx-oci share list --data /var/lib/ifcx-oci alice
-ifcx-oci share revoke --data /var/lib/ifcx-oci alice <share-id>
+subsoil share list --data /var/lib/subsoil alice
+subsoil share revoke --data /var/lib/subsoil alice <share-id>
 ```
 
 Local creation defaults to snapshot binding; use `--binding live` explicitly
@@ -290,7 +294,7 @@ limit when using the local `--share-max-age` option.
 
 Run one server instance per data directory and persist the entire store,
 including signing keys, policies, sessions, shares, and artifacts. The storage
-format is `ifcx-oci-registry/2`; other experimental formats require a fresh
+format is `subsoil-registry/2`; other experimental formats require a fresh
 store. See [DEPLOYMENT.md](DEPLOYMENT.md) for TLS, exact CORS origins, callback
 registration, login throttling, and persistent-volume setup.
 

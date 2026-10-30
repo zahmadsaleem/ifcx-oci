@@ -1,13 +1,13 @@
 use anyhow::Result;
-use ifcx_oci::{
+use reqwest::{Client, Method, Response};
+use serde_json::{json, Value};
+use std::sync::Arc;
+use subsoil::{
     auth::{Claims, SESSION_SCOPE},
     policy::{Grant, GrantSet},
     registry::{self, Registry},
     release::digest,
 };
-use reqwest::{Client, Method, Response};
-use serde_json::{json, Value};
-use std::sync::Arc;
 
 const REPO: &str = "hospital-a/models/architecture";
 struct Fixture {
@@ -66,7 +66,7 @@ impl Fixture {
             .issue(user, &[format!("repository:{repo}:pull,push")], 900)?
             .0)
     }
-    fn root(&self, user: &str) -> Result<ifcx_oci::auth::SessionTokens> {
+    fn root(&self, user: &str) -> Result<subsoil::auth::SessionTokens> {
         self.registry.auth.start_session(
             user,
             &[SESSION_SCOPE.into()],
@@ -149,7 +149,14 @@ impl Fixture {
             .send()
             .await?;
         assert_eq!(result.status(), 200);
-        Ok(result.json().await?)
+        let reply: Value = result.json().await?;
+        assert_eq!(
+            reply["publication_headers"],
+            json!({
+                "publisher":"subsoil-registry-publisher","pushed_at":"subsoil-registry-pushed-at"
+            })
+        );
+        Ok(reply)
     }
     async fn exchange(&self, root: &str, repo: &str) -> Result<(String, Claims)> {
         let response = self
@@ -354,7 +361,7 @@ async fn immutable_publication_retries_concurrent_writes_and_upload_isolation() 
     let read = f
         .get(&format!("/v2/{REPO}/manifests/review-a"), &owner)
         .await?;
-    let provenance = read.headers()["ifcx-registry-pushed-at"].clone();
+    let provenance = read.headers()["subsoil-registry-pushed-at"].clone();
     assert_eq!(
         f.call(
             Method::PUT,
@@ -369,8 +376,8 @@ async fn immutable_publication_retries_concurrent_writes_and_upload_isolation() 
     let retry = f
         .get(&format!("/v2/{REPO}/manifests/review-a"), &owner)
         .await?;
-    assert_eq!(retry.headers()["ifcx-registry-publisher"], "publisher");
-    assert_eq!(retry.headers()["ifcx-registry-pushed-at"], provenance);
+    assert_eq!(retry.headers()["subsoil-registry-publisher"], "publisher");
+    assert_eq!(retry.headers()["subsoil-registry-pushed-at"], provenance);
     assert_eq!(
         f.call(
             Method::DELETE,
@@ -450,7 +457,7 @@ async fn snapshot_and_live_shares_are_bounded_independent_and_revocable() -> Res
         .get(&format!("/v2/{REPO}/manifests/guest"), &owner)
         .await?;
     assert_eq!(
-        published.headers()["ifcx-registry-publisher"],
+        published.headers()["subsoil-registry-publisher"],
         format!("share:{}", live["id"].as_str().unwrap())
     );
     assert_eq!(
@@ -572,7 +579,7 @@ async fn catalog_extension_keeps_repository_names_within_the_approval() -> Resul
     let (_, claims) = f
         .registry
         .auth
-        .exchange(&root.claims, &[ifcx_oci::auth::CATALOG_GRANTS_SCOPE.into()])?;
+        .exchange(&root.claims, &[subsoil::auth::CATALOG_GRANTS_SCOPE.into()])?;
     let repositories: Vec<_> = claims
         .access
         .iter()
@@ -586,7 +593,7 @@ async fn catalog_extension_keeps_repository_names_within_the_approval() -> Resul
 
 #[tokio::test]
 async fn rejected_share_creation_preserves_authorization_and_share_counts() -> Result<()> {
-    use ifcx_oci::auth::ShareBinding;
+    use subsoil::auth::ShareBinding;
     let f = Fixture::new().await?;
     let policy = GrantSet {
         version: 1,

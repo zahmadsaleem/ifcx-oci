@@ -17,7 +17,7 @@ use crate::{
     registry::Registry,
 };
 
-pub(super) const COOKIE: &str = "ifcx_oci_refresh";
+pub(super) const COOKIE: &str = "oci_registry_refresh";
 
 fn cookie(headers: &HeaderMap) -> Result<Option<&str>, ()> {
     let mut values = headers
@@ -92,7 +92,7 @@ fn reply(tokens: SessionTokens, clear_previous: bool) -> Response {
         "subject":tokens.claims.sub,"access":tokens.claims.access,
         "permissions":tokens.permissions,"authorization_type":if tokens.session.root {"session"} else {"access"},
         "remember_me":tokens.session.remember,"session_expires_at":tokens.session.expires,
-        "session_expires_in":remaining});
+        "session_expires_in":remaining,"publication_headers":crate::registry::publication_headers()});
     if !tokens.session.remember {
         value["refresh_token"] = tokens.refresh_token.clone().into();
     }

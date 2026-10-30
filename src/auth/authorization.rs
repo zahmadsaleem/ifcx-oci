@@ -2,8 +2,8 @@
 use super::*;
 use crate::policy::Grant;
 
-pub const SESSION_SCOPE: &str = "ifcx:session";
-pub const CATALOG_GRANTS_SCOPE: &str = "ifcx:catalog:grants";
+pub const SESSION_SCOPE: &str = "subsoil:session";
+pub const CATALOG_GRANTS_SCOPE: &str = "subsoil:catalog:grants";
 
 #[derive(Clone, Debug)]
 pub struct AuthorizationContext {

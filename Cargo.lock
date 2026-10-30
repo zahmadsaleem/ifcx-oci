@@ -1333,37 +1333,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ifcx-oci"
-version = "0.2.0"
-dependencies = [
- "anyhow",
- "argon2",
- "arrow-array",
- "arrow-schema",
- "axum",
- "base64 0.22.1",
- "bytes",
- "clap",
- "hex",
- "ifc-lite-core",
- "ifc-lite-export",
- "ifc-lite-processing",
- "jsonwebtoken",
- "parquet",
- "rand_core 0.6.4",
- "reqwest",
- "rpassword",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "tokio",
- "tower-http",
- "uuid",
-]
-
-[[package]]
 name = "ipnet"
 version = "2.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2459,6 +2428,37 @@ name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
+
+[[package]]
+name = "subsoil"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "argon2",
+ "arrow-array",
+ "arrow-schema",
+ "axum",
+ "base64 0.22.1",
+ "bytes",
+ "clap",
+ "hex",
+ "ifc-lite-core",
+ "ifc-lite-export",
+ "ifc-lite-processing",
+ "jsonwebtoken",
+ "parquet",
+ "rand_core 0.6.4",
+ "reqwest",
+ "rpassword",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tokio",
+ "tower-http",
+ "uuid",
+]
 
 [[package]]
 name = "subtle"

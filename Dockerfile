@@ -12,17 +12,17 @@ COPY src ./src
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/build/target \
-    cargo build --locked --release --bin ifcx-oci \
-    && install -D target/release/ifcx-oci /out/ifcx-oci \
+    cargo build --locked --release --bin subsoil \
+    && install -D target/release/subsoil /out/subsoil \
     && install -d -m 0700 -o 65532 -g 65532 /out/data
 
 FROM gcr.io/distroless/cc-debian13:nonroot
-COPY --from=build /out/ifcx-oci /usr/local/bin/ifcx-oci
+COPY --from=build /out/subsoil /usr/local/bin/subsoil
 COPY --from=build --chown=65532:65532 /out/data /data
-COPY LICENSE /usr/share/licenses/ifcx-oci/LICENSE
+COPY LICENSE /usr/share/licenses/subsoil/LICENSE
 USER 65532:65532
 WORKDIR /data
 VOLUME ["/data"]
 EXPOSE 5000
-ENTRYPOINT ["/usr/local/bin/ifcx-oci"]
+ENTRYPOINT ["/usr/local/bin/subsoil"]
 CMD ["serve", "--data", "/data", "--listen", "0.0.0.0:5000"]

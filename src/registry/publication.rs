@@ -2,6 +2,9 @@
 use super::*;
 use serde::{Deserialize, Serialize};
 
+pub(super) const PUBLISHER_HEADER: &str = "subsoil-registry-publisher";
+pub(super) const PUSHED_AT_HEADER: &str = "subsoil-registry-pushed-at";
+
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Publication {
@@ -69,14 +72,14 @@ pub(super) fn headers(
         return Ok(Vec::new());
     }
     let mut headers = vec![
-        ("ifcx-registry-publisher", value.publisher),
-        ("ifcx-registry-pushed-at", value.pushed_at.to_string()),
+        (PUBLISHER_HEADER, value.publisher),
+        (PUSHED_AT_HEADER, value.pushed_at.to_string()),
     ];
     if let Some(id) = value.share_id {
-        headers.push(("ifcx-registry-share-id", id));
+        headers.push(("subsoil-registry-share-id", id));
     }
     if let Some(creator) = value.created_by {
-        headers.push(("ifcx-registry-created-by", creator));
+        headers.push(("subsoil-registry-created-by", creator));
     }
     Ok(headers)
 }

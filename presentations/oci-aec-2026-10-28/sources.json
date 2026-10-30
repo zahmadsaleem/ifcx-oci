@@ -54,9 +54,9 @@
     },
     {
       "id": "S11",
-      "title": "ifcx-oci — local prototype README",
-      "url": "https://github.com/zahmadsaleem/ifcx-oci/blob/be6e08146eb7336fe5c061d58280188a1011c1c9/README.md",
-      "supports": "Read locally at commit be6e081. Reports two-registry loopback push/copy/pull with retained digest; experimental derived IFCX profile, no approval or lossless STEP round trip."
+      "title": "subsoil — local prototype README",
+      "url": "https://github.com/zahmadsaleem/subsoil/blob/be6e08146eb7336fe5c061d58280188a1011c1c9/README.md",
+      "supports": "Read locally at commit be6e081. Reports two-registry loopback push/copy/pull with retained digest; experimental derived IFC profile, no approval or lossless STEP round trip."
     },
     {
       "id": "S12",
@@ -116,7 +116,7 @@
       "id": "S21",
       "title": "buildingSMART discussion: encoding flexibility and interoperable IFC5 artifacts through OCI",
       "url": "https://github.com/buildingSMART/IFC5-development/issues/155",
-      "supports": "Proposal separating IFC semantics, encoding profiles, artifact contract and OCI distribution. Flexible IFCX encodings on this slide are a proposed agreement, not an approved standard."
+      "supports": "Proposal separating IFC semantics, encoding profiles, artifact contract and OCI distribution. The encodings on this slide are a proposed profile agreement, not an approved standard."
     },
     {
       "id": "S22",

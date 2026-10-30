@@ -1,5 +1,5 @@
 {
-  "profile": "https://example.org/profiles/ifcx-release/v1",
+  "profile": "https://example.org/profiles/subsoil-release/v1",
   "modelId": "architecture-model",
   "exampleOnly": true,
   "payloads": [
@@ -29,5 +29,5 @@
       "required": false
     }
   ],
-  "semantics": "The proposed profile must define IFCX mappings, shared IDs, units, schema and composition rules."
+  "semantics": "The proposed profile must define IFC mappings, shared IDs, units, schema and composition rules."
 }

@@ -17,8 +17,8 @@ use uuid::Uuid;
 
 pub const IFC: &str = r#"ISO-10303-21;
 HEADER;
-FILE_DESCRIPTION(('IFCX OCI showcase'),'2;1');
-FILE_NAME('showcase.ifc','2026-10-28T09:00:00',(''),(''),'ifcx-oci','ifcx-oci','');
+FILE_DESCRIPTION(('Subsoil showcase'),'2;1');
+FILE_NAME('showcase.ifc','2026-10-28T09:00:00',(''),(''),'subsoil','subsoil','');
 FILE_SCHEMA(('IFC4'));
 ENDSEC;
 DATA;

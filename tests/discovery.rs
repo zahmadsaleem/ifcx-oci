@@ -1,11 +1,11 @@
 use anyhow::Result;
-use ifcx_oci::{
+use reqwest::Client;
+use serde_json::{json, Value};
+use subsoil::{
     auth::now,
     registry::{self, Registry},
     release::digest,
 };
-use reqwest::Client;
-use serde_json::{json, Value};
 
 async fn sign_in(http: &Client, host: &str, user: &str, scope: &str) -> Result<Value> {
     let response = http
@@ -87,7 +87,7 @@ async fn authenticated_catalog_exact_grants_and_persistent_publication_provenanc
     let host = listener.local_addr()?.to_string();
     let running = tokio::spawn(registry::serve(listener, registry.clone()));
     let http = Client::new();
-    let writer = sign_in(&http, &host, "writer", "ifcx:catalog:grants").await?;
+    let writer = sign_in(&http, &host, "writer", "subsoil:catalog:grants").await?;
     assert_eq!(writer["subject"], "writer");
     for access in writer["access"].as_array().unwrap() {
         assert!(!access["name"].as_str().unwrap().contains('*'));
@@ -109,7 +109,7 @@ async fn authenticated_catalog_exact_grants_and_persistent_publication_provenanc
             .status(),
         401
     );
-    let reader = sign_in(&http, &host, "reader", "ifcx:catalog:grants").await?;
+    let reader = sign_in(&http, &host, "reader", "subsoil:catalog:grants").await?;
     let reader_token = reader["token"].as_str().unwrap();
     let catalog: Value = http
         .get(format!("http://{host}/v2/_catalog"))
@@ -130,7 +130,7 @@ async fn authenticated_catalog_exact_grants_and_persistent_publication_provenanc
         page.json::<Value>().await?["repositories"],
         json!(["private/secret"])
     );
-    let empty = sign_in(&http, &host, "empty", "ifcx:catalog:grants").await?;
+    let empty = sign_in(&http, &host, "empty", "subsoil:catalog:grants").await?;
     assert_eq!(
         http.get(format!("http://{host}/v2/_catalog"))
             .bearer_auth(empty["token"].as_str().unwrap())
@@ -167,13 +167,13 @@ async fn authenticated_catalog_exact_grants_and_persistent_publication_provenanc
         .bearer_auth(reader_token)
         .send()
         .await?;
-    assert_eq!(received.headers()["ifcx-registry-publisher"], "writer");
-    let pushed_at = received.headers()["ifcx-registry-pushed-at"]
+    assert_eq!(received.headers()["subsoil-registry-publisher"], "writer");
+    let pushed_at = received.headers()["subsoil-registry-pushed-at"]
         .to_str()?
         .to_string();
     assert!((before..=now()).contains(&pushed_at.parse::<u64>()?));
     assert_eq!(received.bytes().await?.as_ref(), raw.as_slice());
-    let reviewer = sign_in(&http, &host, "reviewer", "ifcx:catalog:grants").await?;
+    let reviewer = sign_in(&http, &host, "reviewer", "subsoil:catalog:grants").await?;
     publish(
         &http,
         &host,
@@ -186,7 +186,7 @@ async fn authenticated_catalog_exact_grants_and_persistent_publication_provenanc
             .bearer_auth(reader_token)
             .send()
             .await?
-            .headers()["ifcx-registry-publisher"],
+            .headers()["subsoil-registry-publisher"],
         "writer"
     );
     let original = http
@@ -196,8 +196,8 @@ async fn authenticated_catalog_exact_grants_and_persistent_publication_provenanc
         .bearer_auth(reader_token)
         .send()
         .await?;
-    assert_eq!(original.headers()["ifcx-registry-publisher"], "writer");
-    assert_eq!(original.headers()["ifcx-registry-pushed-at"], pushed_at);
+    assert_eq!(original.headers()["subsoil-registry-publisher"], "writer");
+    assert_eq!(original.headers()["subsoil-registry-pushed-at"], pushed_at);
     assert_eq!(digest(&original.bytes().await?), manifest_digest);
     running.abort();
     let _ = running.await;
@@ -214,8 +214,8 @@ async fn authenticated_catalog_exact_grants_and_persistent_publication_provenanc
         .send()
         .await?;
     assert_eq!(received.status(), 200);
-    assert_eq!(received.headers()["ifcx-registry-publisher"], "writer");
-    assert_eq!(received.headers()["ifcx-registry-pushed-at"], pushed_at);
+    assert_eq!(received.headers()["subsoil-registry-publisher"], "writer");
+    assert_eq!(received.headers()["subsoil-registry-pushed-at"], pushed_at);
     let db = rusqlite::Connection::open(store.join("auth.sqlite"))?;
     db.execute("DELETE FROM policy_rules WHERE user='reader'", [])?;
     assert_eq!(

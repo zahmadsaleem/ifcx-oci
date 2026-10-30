@@ -1,12 +1,12 @@
 use anyhow::Result;
-use ifcx_oci::{
+use reqwest::{Client, Response, Url};
+use serde_json::Value;
+use std::sync::Arc;
+use subsoil::{
     auth::{now, REMEMBER_SECONDS, SESSION_SECONDS},
     oauth::challenge,
     registry::{self, Registry},
 };
-use reqwest::{Client, Response, Url};
-use serde_json::Value;
-use std::sync::Arc;
 
 const CLIENT: &str = "model-client";
 const CALLBACK: &str = "http://localhost:3000/oauth/callback";
@@ -195,6 +195,12 @@ async fn memory_session_renews_without_persistence_and_logout_revokes_rotated_to
         .contains("Max-Age=0"));
     let session: Value = response.json().await?;
     assert_eq!(session["remember_me"], false);
+    assert_eq!(
+        session["publication_headers"],
+        serde_json::json!({
+            "publisher":"subsoil-registry-publisher","pushed_at":"subsoil-registry-pushed-at"
+        })
+    );
     let deadline = session["session_expires_at"].as_u64().unwrap();
     assert!((before + SESSION_SECONDS..=now() + SESSION_SECONDS).contains(&deadline));
     let original = session["refresh_token"].as_str().unwrap();

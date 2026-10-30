@@ -1,8 +1,9 @@
 [package]
-name = "ifcx-oci"
+name = "subsoil"
+publish = false
 version = "0.2.0"
 edition = "2021"
-description = "Experimental IFC artifact producer, OCI client and local registry"
+description = "Artifact registry and exchange toolkit with IFC conversion support"
 license = "Apache-2.0"
 
 [dependencies]

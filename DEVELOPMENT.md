@@ -5,12 +5,12 @@
 ```sh
 nix develop
 cargo build --locked --release
-./target/release/ifcx-oci --help
+./target/release/subsoil --help
 ```
 
 ```sh
 nix build
-./result/bin/ifcx-oci --help
+./result/bin/subsoil --help
 ```
 
 ## Checks
@@ -19,7 +19,7 @@ nix build
 cargo fmt --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
-IFCX_TEST_ORAS="$(command -v oras)" cargo test --locked --test showcase
+SUBSOIL_TEST_ORAS="$(command -v oras)" cargo test --locked --test showcase
 nix flake check --no-build
 git diff --check
 ```
@@ -34,7 +34,7 @@ cargo run --locked -- serve --data build/registry --listen 127.0.0.1:5000 \
   --oauth-redirect-uri http://localhost:3000/oauth/callback
 ```
 
-The application requests `ifcx:session` during PKCE sign-in, then exchanges the
+The application requests `subsoil:session` during PKCE sign-in, then exchanges the
 approved root for concrete repository tokens at `/token`. The shared JSON policy
 shape and share API are described in [AUTHORIZATION.md](AUTHORIZATION.md).
 
@@ -52,13 +52,13 @@ nix run .#demo -- --output build/showcase
 ## Docker
 
 ```sh
-docker build -t ifcx-oci:dev .
-docker run --rm ifcx-oci:dev --help
-docker volume create ifcx-oci-data
-docker run --rm -it -v ifcx-oci-data:/data ifcx-oci:dev \
+docker build -t subsoil:dev .
+docker run --rm subsoil:dev --help
+docker volume create subsoil-data
+docker run --rm -it -v subsoil-data:/data subsoil:dev \
   user add --data /data writer --grant project/model:pull,push
 
-docker run --rm -p 127.0.0.1:5000:5000 -v ifcx-oci-data:/data ifcx-oci:dev \
+docker run --rm -p 127.0.0.1:5000:5000 -v subsoil-data:/data subsoil:dev \
   serve --data /data --listen 0.0.0.0:5000 --public-url http://localhost:5000 \
   --oauth-client-id model-client \
   --oauth-redirect-uri http://localhost:3000/oauth/callback

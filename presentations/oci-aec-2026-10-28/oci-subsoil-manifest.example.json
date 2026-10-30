@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "mediaType": "application/vnd.oci.image.manifest.v1+json",
-  "artifactType": "application/vnd.example.ifcx.v1",
+  "artifactType": "application/vnd.example.subsoil.v1",
   "config": {
-    "mediaType": "application/vnd.example.ifcx.config.v1+json",
+    "mediaType": "application/vnd.example.subsoil.config.v1+json",
     "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
     "size": 512
   },

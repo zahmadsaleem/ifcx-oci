@@ -250,7 +250,7 @@ async fn authorize(
     };
     let mut response = form(&id, &pending, "", "", false);
     response.headers_mut().insert(header::SET_COOKIE,
-        format!("ifcx_oauth_{id}={}; HttpOnly; SameSite=Strict; Path=/oauth/authorize; Max-Age={FORM_SECONDS}{}", pending.cookie, if registry.secure_cookies() { "; Secure" } else { "" })
+        format!("subsoil_oauth_{id}={}; HttpOnly; SameSite=Strict; Path=/oauth/authorize; Max-Age={FORM_SECONDS}{}", pending.cookie, if registry.secure_cookies() { "; Secure" } else { "" })
             .parse().expect("generated cookie"));
     store.forms.insert(id, pending);
     response
@@ -288,7 +288,7 @@ async fn consent(
         };
         pending.clone()
     };
-    let expected = format!("ifcx_oauth_{}={}", input.request_id, pending.cookie);
+    let expected = format!("subsoil_oauth_{}={}", input.request_id, pending.cookie);
     let has_cookie = headers
         .get(header::COOKIE)
         .and_then(|h| h.to_str().ok())
@@ -356,7 +356,7 @@ async fn consent(
     response.headers_mut().insert(
         header::SET_COOKIE,
         format!(
-            "ifcx_oauth_{}=; HttpOnly; SameSite=Strict; Path=/oauth/authorize; Max-Age=0{}",
+            "subsoil_oauth_{}=; HttpOnly; SameSite=Strict; Path=/oauth/authorize; Max-Age=0{}",
             input.request_id,
             if registry.secure_cookies() {
                 "; Secure"

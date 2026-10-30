@@ -623,7 +623,7 @@ impl Client {
             .unwrap_or_else(|| Path::new("."));
         fs::create_dir_all(parent)?;
         let stage = tempfile::Builder::new()
-            .prefix(".ifcx-pull-")
+            .prefix(".subsoil-pull-")
             .tempdir_in(parent)?;
         let mut paths = BTreeSet::new();
         // Validate all destination paths before downloading any payloads.

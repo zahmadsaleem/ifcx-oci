@@ -1,15 +1,15 @@
 use anyhow::Result;
-use ifcx_oci::{
-    client::{Client, Descriptor, Manifest},
-    registry::{self, Registry},
-    release::{digest, digest_hex, ARTIFACT_TYPE},
-};
 use serde_json::Value;
 use std::{
     collections::BTreeMap,
     fs,
     path::PathBuf,
     process::{Command, Output},
+};
+use subsoil::{
+    client::{Client, Descriptor, Manifest},
+    registry::{self, Registry},
+    release::{digest, digest_hex, ARTIFACT_TYPE},
 };
 use tokio::task::JoinHandle;
 
@@ -151,7 +151,7 @@ impl Fixture {
     }
 
     fn cli(&self, arguments: &[&str]) -> Result<Output> {
-        Ok(Command::new(env!("CARGO_BIN_EXE_ifcx-oci"))
+        Ok(Command::new(env!("CARGO_BIN_EXE_subsoil"))
             .arg("--plain-http")
             .arg("--auth-file")
             .arg(self.temp.path().join("auth.json"))
@@ -364,7 +364,7 @@ async fn selection_errors_and_corruption_leave_no_partial_output() -> Result<()>
         .unwrap()
         .file_name()
         .to_string_lossy()
-        .starts_with(".ifcx-pull-")));
+        .starts_with(".subsoil-pull-")));
     Ok(())
 }
 

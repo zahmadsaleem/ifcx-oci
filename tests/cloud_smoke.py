@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Real distroless-volume replacement behind TLS ingress and an app token proxy.
 
-Run: python3 tests/cloud_smoke.py ifcx-oci:cloud-test
+Run: python3 tests/cloud_smoke.py subsoil:cloud-test
 Requires Docker, Python 3 and openssl; uses only disposable test resources.
 """
 import base64
@@ -32,7 +32,7 @@ def digest(data):
 
 
 def main(image):
-    name = "ifcx-cloud-test-" + uuid.uuid4().hex[:12]
+    name = "subsoil-cloud-test-" + uuid.uuid4().hex[:12]
     volume = name + "-data"
     backend = {}
     app_origin = {}
@@ -78,7 +78,7 @@ def main(image):
         do_GET = do_POST = do_PUT = forward
 
     try:
-        with tempfile.TemporaryDirectory(prefix="ifcx-cloud-smoke-") as directory:
+        with tempfile.TemporaryDirectory(prefix="subsoil-cloud-smoke-") as directory:
             cert, key = Path(directory) / "cert.pem", Path(directory) / "key.pem"
             subprocess.run([
                 "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
@@ -233,4 +233,4 @@ def main(image):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "ifcx-oci:cloud-test")
+    main(sys.argv[1] if len(sys.argv) > 1 else "subsoil:cloud-test")

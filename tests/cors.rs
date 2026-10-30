@@ -1,10 +1,10 @@
 use anyhow::Result;
-use ifcx_oci::{
+use reqwest::{header::HeaderMap, Client, Method, Response};
+use serde_json::Value;
+use subsoil::{
     registry::{self, Registry},
     release::digest,
 };
-use reqwest::{header::HeaderMap, Client, Method, Response};
-use serde_json::Value;
 
 const APP: &str = "https://app.example.com";
 
@@ -254,8 +254,8 @@ async fn cors_covers_authentication_errors_and_authenticated_blob_uploads() -> R
         "range",
         "content-range",
         "retry-after",
-        "ifcx-registry-publisher",
-        "ifcx-registry-pushed-at",
+        "subsoil-registry-publisher",
+        "subsoil-registry-pushed-at",
     ] {
         assert!(
             contains(response.headers(), "access-control-expose-headers", name),

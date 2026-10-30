@@ -33,6 +33,11 @@ mod public_url;
 mod publication;
 mod shares;
 
+/// Optional metadata for browser clients; publication headers are a Subsoil extension.
+pub(crate) fn publication_headers() -> serde_json::Value {
+    json!({"publisher":publication::PUBLISHER_HEADER,"pushed_at":publication::PUSHED_AT_HEADER})
+}
+
 pub const MANIFEST_TYPE: &str = "application/vnd.oci.image.manifest.v1+json";
 const MAX_BLOB: usize = 512 * 1024 * 1024;
 
@@ -59,13 +64,13 @@ impl Registry {
         if root.join("registry.json").exists() {
             let marker: Value = serde_json::from_slice(&fs::read(root.join("registry.json"))?)?;
             ensure!(
-                marker["format"] == "ifcx-oci-registry/2",
+                marker["format"] == "subsoil-registry/2",
                 "Unknown registry store format"
             );
         } else {
             atomic_write(
                 &root.join("registry.json"),
-                b"{\"format\":\"ifcx-oci-registry/2\"}\n",
+                b"{\"format\":\"subsoil-registry/2\"}\n",
             )?;
         }
         fs::create_dir_all(root.join("blobs/sha256"))?;
@@ -362,7 +367,7 @@ async fn token(
     .into_response();
     response.headers_mut().insert(
         header::WWW_AUTHENTICATE,
-        "Basic realm=\"ifcx-oci\"".parse().expect("static header"),
+        "Basic realm=\"subsoil\"".parse().expect("static header"),
     );
     Ok(response)
 }

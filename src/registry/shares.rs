@@ -175,7 +175,7 @@ async fn redeem(
         Ok((token, claims, share)) => no_store(
             json!({"token":token,"access_token":token,"token_type":"Bearer",
             "subject":format!("share:{}",share.id),"share_id":share.id,"authorization_type":"share","access":claims.access,"permissions":share.grants,
-            "expires_in":claims.exp.saturating_sub(claims.iat),"remember_me":false,
+            "expires_in":claims.exp.saturating_sub(claims.iat),"remember_me":false,"publication_headers":super::publication_headers(),
             "session_expires_at":share.expires_at,"session_expires_in":share.expires_at.saturating_sub(crate::auth::now())}),
         ),
         Err(_) => (
