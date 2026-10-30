@@ -62,7 +62,8 @@ separately, so the model package keeps its original identity.
 ## Share your own model locally
 
 Browser applications can use the registry's own sign-in page, so they do not
-collect your password. Developers can find the
+collect your password. Browser sessions renew automatically for eight hours,
+or 30 days with **Remember me**, across tabs and page refreshes. Developers can find the
 [application setup](DEVELOPMENT.md#connect-a-browser-application) in the development guide.
 
 The following example runs on your own computer. `127.0.0.1` is its local address.
@@ -116,10 +117,16 @@ To create a user who can only receive releases:
 ifcx-oci user add --data build/company-a reader --grant project/model:pull
 ```
 
-That user signs in with `--username reader --scope project/model:pull` and can
-receive from the same collection. Logins last 15 minutes; sign in again when
-needed. Use `ifcx-oci copy SOURCE DESTINATION` to copy a release to another
-registry after signing in to both.
+In the CLI, that user signs in with:
+
+```sh
+ifcx-oci --plain-http login 127.0.0.1:5000 \
+  --username reader --scope project/model:pull
+```
+
+CLI tokens expire after 15 minutes and do not renew automatically; run `login`
+again when needed. Use `ifcx-oci copy SOURCE DESTINATION` to copy a release to
+another registry after signing in to both.
 
 ## Try a shared registry
 

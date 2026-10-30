@@ -25,6 +25,7 @@ use uuid::Uuid;
 
 use crate::auth::{Auth, PasswordLoginError, TOKEN_SECONDS};
 use crate::release::{digest, digest_hex};
+mod cors;
 mod discovery;
 mod public_url;
 mod publication;
@@ -37,6 +38,7 @@ pub struct Registry {
     pub auth: Auth,
     pub oauth: crate::oauth::OAuth,
     public_url: std::sync::RwLock<Option<reqwest::Url>>,
+    cors: std::sync::RwLock<Option<tower_http::cors::CorsLayer>>,
     mutation: Mutex<()>,
 }
 
@@ -69,6 +71,7 @@ impl Registry {
             auth: Auth::open(root)?,
             oauth: crate::oauth::OAuth::default(),
             public_url: std::sync::RwLock::new(None),
+            cors: std::sync::RwLock::new(None),
             mutation: Mutex::new(()),
         }))
     }
@@ -91,15 +94,23 @@ impl Registry {
 }
 
 pub fn router(registry: Arc<Registry>) -> Router {
-    Router::new()
-        .merge(crate::oauth::router())
-        .route("/healthz", get(|| async { StatusCode::OK }))
-        .route("/readyz", get(ready))
+    let cors = registry
+        .cors
+        .read()
+        .expect("CORS configuration lock")
+        .clone();
+    let mut api = Router::new()
         .route("/token", any(token))
         .route("/v2/", any(base))
         .route("/v2", any(base))
         .route("/v2/_catalog", any(discovery::catalog))
-        .route("/v2/{*path}", any(endpoint))
+        .route("/v2/{*path}", any(endpoint));
+    if let Some(cors) = &cors {
+        api = api.layer(cors.clone());
+    }
+    api.merge(crate::oauth::router_with_cors(cors))
+        .route("/healthz", get(|| async { StatusCode::OK }))
+        .route("/readyz", get(ready))
         .layer(DefaultBodyLimit::max(MAX_BLOB))
         .with_state(registry)
 }

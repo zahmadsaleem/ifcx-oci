@@ -69,6 +69,33 @@ without third-party cookies. Keep access tokens in memory; remembered refresh
 credentials are omitted from JSON. Consent cookies on the HTTPS registry are
 also Secure even though the private hop uses HTTP.
 
+## Direct browser access with CORS
+
+CORS is disabled by default. Add `--cors-origin https://app.example.com` to the
+`serve` command to let that application call the registry directly; repeat the
+option for more trusted origins. Each entry must be an exact HTTPS origin (or
+loopback HTTP for development), without credentials, a path, query or fragment.
+Wildcards and `null` origins are rejected. OAuth callback registration remains
+separate and still requires the exact callback URL.
+
+Allowed origins receive CORS headers on `/v2`, `/v2/…`, `/token`, `/oauth/config`,
+`/oauth/token` and `/oauth/revoke`, including error responses and unauthenticated
+OPTIONS preflights. GET, HEAD, POST, PUT, PATCH, DELETE and OPTIONS are allowed,
+with Authorization, Accept, Content-Type, Content-Range and Range request headers.
+The browser can read WWW-Authenticate, Location, Link, Range, Content-Range,
+Retry-After, Docker-Content-Digest, Docker-Distribution-API-Version,
+Docker-Upload-UUID and the ifcx-registry publication headers. Responses vary by
+Origin and the preflight method/headers. The registry password/consent page and
+health probes do not receive CORS access; sign-in still opens the registry's page.
+CORS does not replace bearer-token authorization or grant repository permissions.
+
+Direct browser clients can use PKCE with a memory-only session. Credentialed
+requests are permitted for allowlisted origins, but refresh cookies retain
+`HttpOnly; SameSite=Strict` (and Secure on HTTPS): CORS does not make a cookie
+available across unrelated sites. Keep the application token/revoke proxy above
+for reliable remembered login across sites. This option does not change cookie
+policy or bypass browser restrictions on HTTPS pages accessing local HTTP servers.
+
 ## Health and shutdown
 
 Use unauthenticated `GET /healthz` for liveness and `GET /readyz` for readiness.
@@ -81,9 +108,14 @@ seconds).
 
 ## Deployment limits
 
-Both browser password login and OCI/CLI `/token` login share an in-memory budget
-of 5 attempts per account and 60 total attempts per minute, including successes.
-Throttled attempts return 429 with `Retry-After`. Restart clears this budget;
+Browser password login and OCI/CLI `/token` login share an in-memory limit of
+5 failed attempts per account per minute. Successful password verification does
+not consume this account budget or clear earlier failures. In-flight attempts
+reserve account slots so parallel failures cannot bypass the limit. A separate
+global limit counts all attempts, including successes, at 60 per minute to bound
+password-verification work. These limits are keyed by account, never untrusted
+forwarded IP headers, following [OWASP's account-based failed-login guidance](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html#login-throttling).
+Throttled attempts return 429 with `Retry-After`. Restart clears these budgets;
 apply ingress request limits too for an internet-facing test service.
 
 Keep replica count at **one**, including during replacement (use a recreate

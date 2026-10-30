@@ -319,8 +319,19 @@ async fn public_origin_proxy_login_readiness_throttling_and_remembered_restart()
         200
     );
 
-    // A browser attempt and OCI attempts share the same account budget.
-    for _ in 0..4 {
+    // Correct CLI logins must not spend the browser's failed-login budget (#8310).
+    for _ in 0..6 {
+        assert_eq!(
+            http.get(format!("{}/token", server.origin))
+                .basic_auth("writer", Some(PASSWORD))
+                .send()
+                .await?
+                .status(),
+            200
+        );
+    }
+    // Browser and OCI password failures still share the account limit.
+    for _ in 0..5 {
         assert_eq!(
             http.get(format!("{}/token", server.origin))
                 .basic_auth("writer", Some("wrong-password"))
@@ -415,6 +426,8 @@ async fn sigterm_drains_an_inflight_oci_upload() -> Result<()> {
             .args(["serve", "--data"])
             .arg(&data)
             .args(["--listen", "127.0.0.1:0"])
+            .args(["--cors-origin", "https://app.example.com"])
+            .args(["--cors-origin", "http://localhost:3000"])
             .stderr(Stdio::piped())
             .spawn()?,
     );
@@ -426,6 +439,20 @@ async fn sigterm_drains_an_inflight_oci_upload() -> Result<()> {
         .find(|v| v.starts_with("http://"))
         .unwrap();
     let http = Client::new();
+    let config = http
+        .get(format!("{origin}/oauth/config"))
+        .header("Origin", "https://app.example.com")
+        .send()
+        .await?;
+    assert_eq!(
+        config.headers()["access-control-allow-origin"],
+        "https://app.example.com"
+    );
+    let config: Value = config.json().await?;
+    assert_eq!(
+        config["authorization_endpoint"],
+        format!("{origin}/oauth/authorize")
+    );
     let token: Value = http
         .get(format!("{origin}/token"))
         .basic_auth("writer", Some(PASSWORD))

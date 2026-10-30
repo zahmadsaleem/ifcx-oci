@@ -133,11 +133,20 @@ impl OAuth {
 }
 
 pub fn router() -> Router<std::sync::Arc<Registry>> {
-    Router::new()
+    router_with_cors(None)
+}
+
+pub(crate) fn router_with_cors(
+    cors: Option<tower_http::cors::CorsLayer>,
+) -> Router<std::sync::Arc<Registry>> {
+    let mut api = Router::new()
         .route("/oauth/config", get(config))
-        .route("/oauth/authorize", get(authorize).post(consent))
         .route("/oauth/token", post(exchange))
-        .route("/oauth/revoke", post(session::revoke))
+        .route("/oauth/revoke", post(session::revoke));
+    if let Some(cors) = cors {
+        api = api.layer(cors);
+    }
+    api.route("/oauth/authorize", get(authorize).post(consent))
         .layer(DefaultBodyLimit::max(16 * 1024))
 }
 

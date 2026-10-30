@@ -19,6 +19,7 @@ async fn browser_consent_pkce_cookie_csrf_denial_and_scoped_registry_session() -
     registry
         .oauth
         .configure("model-client", &[callback.into()])?;
+    registry.set_cors_origins(&["http://localhost:3000".into()])?;
     let listener = registry::bind("127.0.0.1:0".parse()?).await?;
     let origin = format!("http://{}", listener.local_addr()?);
     let running = tokio::spawn(registry::serve(listener, registry.clone()));
@@ -61,6 +62,7 @@ async fn browser_consent_pkce_cookie_csrf_denial_and_scoped_registry_session() -
     for deny in [true, false] {
         let page = http.get(authorization.clone()).send().await?;
         assert_eq!(page.status(), 200);
+        assert!(!page.headers().contains_key("access-control-allow-origin"));
         assert_eq!(page.headers()["x-frame-options"], "DENY");
         assert_eq!(page.headers()["referrer-policy"], "same-origin");
         assert!(page.headers()["content-security-policy"]
@@ -156,10 +158,15 @@ async fn browser_consent_pkce_cookie_csrf_denial_and_scoped_registry_session() -
         ];
         let response = http
             .post(format!("{origin}/oauth/token"))
+            .header("Origin", "http://localhost:3000")
             .form(&exchange)
             .send()
             .await?;
         assert_eq!(response.status(), 200);
+        assert_eq!(
+            response.headers()["access-control-allow-origin"],
+            "http://localhost:3000"
+        );
         assert_eq!(response.headers()["cache-control"], "no-store");
         let session: Value = response.json().await?;
         assert_eq!(session["subject"], "reader");

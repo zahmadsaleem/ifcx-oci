@@ -34,6 +34,11 @@ cargo run --locked -- serve --data build/registry --listen 127.0.0.1:5000 \
   --oauth-redirect-uri http://localhost:3000/oauth/callback
 ```
 
+For direct browser API access, also pass `--cors-origin http://localhost:3000`.
+Repeat `--cors-origin` for each trusted application origin. Registering an OAuth
+callback alone does not enable CORS. See the [CORS deployment notes](DEPLOYMENT.md#direct-browser-access-with-cors)
+for hosted applications and remembered-login constraints.
+
 ## Demo
 
 ```sh

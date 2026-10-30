@@ -38,6 +38,9 @@ enum Command {
         /// External HTTPS origin (or loopback HTTP); required for non-loopback binding.
         #[arg(long)]
         public_url: Option<String>,
+        /// Allow a browser application's exact HTTPS (or loopback HTTP) origin; repeat per origin.
+        #[arg(long = "cors-origin")]
+        cors_origins: Vec<String>,
         /// Public OAuth client ID to register for browser login.
         #[arg(long, requires = "oauth_redirect_uris")]
         oauth_client_id: Option<String>,
@@ -262,6 +265,7 @@ async fn main() -> Result<()> {
             data,
             listen,
             public_url,
+            cors_origins,
             oauth_client_id,
             oauth_redirect_uris,
         } => {
@@ -269,6 +273,7 @@ async fn main() -> Result<()> {
             if let Some(public_url) = public_url {
                 registry.set_public_url(&public_url)?;
             }
+            registry.set_cors_origins(&cors_origins)?;
             if let Some(client_id) = oauth_client_id {
                 registry.oauth.configure(&client_id, &oauth_redirect_uris)?;
             }
