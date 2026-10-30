@@ -1,35 +1,25 @@
 <h1><picture><source media="(prefers-color-scheme: dark)" srcset="assets/brand/subsoil-logo-chalk.svg"><img src="assets/brand/subsoil-logo.svg" alt="Subsoil" width="280"></picture></h1>
 
-Subsoil gives your team a shared place for project files and their versions.
-Find what you need, see who added it, and share a link with someone who has access.
-Your organization chooses where the files are kept and which people and apps can
-use them.
+[Read the project pitch](https://madsolame.com/subsoil/).
 
-## Find your files
+**Share an IFC model release between tools and organizations through an
+owner-controlled registry.**
 
-Open the Subsoil address your team gave you and sign in with your account. The
-Files page shows the folders you can access. Search for a folder, choose a
-version, and look through its files. **Added by**, **Added**, and **Size** help
-you recognize the version you need.
+Subsoil gives organizations control of their model data while people choose the
+applications they use to work with it. A registry stores published versions;
+compatible tools can open a selected version, edit it, and publish a new release.
+The same connection can carry requirements, drawings, reports, and other kinds
+of artifacts as applications add support for their profiles.
 
-The file browser is for viewing. It does not change the files stored there.
-Your sign-in lasts up to eight hours in that browser tab. If a folder is missing,
-ask your project team to check your access.
+OCI (Open Container Initiative) provides the packaging and transfer protocol.
+An **artifact profile** defines what a release contains and how its files fit
+together, so different tools can interpret the same content. Access rules decide
+which releases a person or application can read or publish.
 
-## Share a version
-
-Choose **Copy link** on a version's page to send its address to a teammate.
-They will need their own access to open it. Copying a link does not change who
-can use the files.
-
-Your team can also send an expiring share link. Its page shows the files shared
-with you and when the link stops working. Ask the sender for a new link if it has
-expired, or for help choosing an app to open a model.
-
-Each named version stays fixed. Changed files are added as a new version, so a
-link to an issued version continues to identify the same content. People who
-connect other software can find storage information and an exact integration
-reference under **Technical details**.
+The `subsoil` command runs a persistent registry, converts an IFC model into typed
+Parquet data tables and GLB geometry, and publishes, receives, verifies, or copies
+releases between independent registries. Its embedded browser lets people find
+and share versions, then open them in a registered application.
 
 ## Try Subsoil on your computer
 
@@ -45,6 +35,43 @@ The demo makes a small example model and shares it between two local stores. It
 checks that the files arrive intact and that a person with viewing access cannot
 add files or open another collection. The stores stop when it finishes. Their
 data and a report remain in `build/showcase`; use a new output folder for each run.
+
+## How the data moves
+
+```mermaid
+flowchart LR
+    Source[Source IFC] --> Adapter[IFC adapter]
+    Adapter --> Data[Typed Parquet data tables]
+    Adapter --> Geometry[GLB geometry]
+    Data --> Release[Profile and JSON release index]
+    Geometry --> Release
+    Release --> Artifact[OCI manifest and blobs]
+    Artifact --> Registry[Owner-controlled registry]
+    Registry --> Apps[Compatible applications]
+    Registry -->|authorized copy| Other[Independent registry]
+```
+
+The registry keeps and delivers releases. Applications interpret models, check
+requirements, and calculate results. Other artifact profiles use the same
+registry API when applications understand their formats. Publication details,
+including who added a version and when, are recorded separately from its
+immutable content.
+
+## Browse, share, and open a release
+
+Open `/explore` at your registry's address and sign in. The **Files** page shows
+the folders and versions you can access, with files and publication details for
+each version. **Open with…** and **Edit with…** list registered applications
+that support the release's profile and your permitted access. Launches reuse
+your registry login; the receiving application handles editing and saving new
+versions. See the [application integration guide](docs/DEVELOPMENT.md#register-applications-that-open-files)
+for registration and the Open Artifact contract.
+
+**Copy link** shares the version's browser address with someone who already has
+access. Expiring share links can delegate viewing or publishing within chosen
+permissions. Each named version stays fixed, so changed content receives a new
+version name. An exact OCI reference and manifest are available under
+**Technical details** for other tools and integrations.
 
 ## Share your own model locally
 
@@ -110,6 +137,5 @@ in the shared version. Verification checks file integrity and internal links;
 your team still decides whether a model is suitable for its project.
 
 The [brand guide](docs/BRANDING.md) covers the logo and interface language.
-You can also [read the project pitch](https://madsolame.com/subsoil/).
 
 Licensed under the [Apache License 2.0](LICENSE).
