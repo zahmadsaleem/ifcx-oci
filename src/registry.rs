@@ -27,6 +27,7 @@ use uuid::Uuid;
 use crate::auth::{Auth, PasswordLoginError, TOKEN_SECONDS};
 use crate::release::{digest, digest_hex};
 mod access;
+mod brand;
 mod cors;
 mod discovery;
 mod explorer;
@@ -125,6 +126,7 @@ pub fn router(registry: Arc<Registry>) -> Router {
         api = api.layer(cors.clone());
     }
     api.merge(crate::oauth::router_with_cors(cors))
+        .merge(brand::router())
         .merge(explorer::router())
         .route("/share", get(shares::landing))
         .route("/healthz", get(|| async { StatusCode::OK }))

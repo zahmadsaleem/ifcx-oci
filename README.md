@@ -1,77 +1,55 @@
-# Subsoil
+<h1><picture><source media="(prefers-color-scheme: dark)" srcset="assets/brand/subsoil-logo-chalk.svg"><img src="assets/brand/subsoil-logo.svg" alt="Subsoil" width="280"></picture></h1>
 
-**Share an IFC model release between tools and organizations through a common registry.**
+Subsoil gives your team a shared place for project files and their versions.
+Find what you need, see who added it, and share a link with someone who has access.
+Your organization chooses where the files are kept and which people and apps can
+use them.
 
-[Read the pitch](https://madsolame.com/subsoil/).
+## Find your files
 
-Think of a registry as a company's data reservoir. Models, requirements, drawings
-and other kinds of data can each have their own tank. Different applications can
-connect to that reservoir, use the data they understand, and publish new results.
-New kinds of data can be added as needs grow.
+Open the Subsoil address your team gave you and sign in with your account. The
+Files page shows the folders you can access. Search for a folder, choose a
+version, and look through its files. **Added by**, **Added**, and **Size** help
+you recognize the version you need.
 
-OCI (Open Container Initiative) provides a common way to package and transfer
-those files. Tools still need to agree on what the files mean. The aim is for
-organizations to control their data while people choose the tools that suit their
-work.
+The file browser is for viewing. It does not change the files stored there.
+Your sign-in lasts up to eight hours in that browser tab. If a folder is missing,
+ask your project team to check your access.
 
-`subsoil` is one program that can run a local registry, prepare a model release,
-publish it, receive it and check that its files arrived intact. A release is a
-snapshot of model data and geometry that can be shared and referred to later.
+## Share a version
 
-## Try the example
+Choose **Copy link** on a version's page to send its address to a teammate.
+They will need their own access to open it. Copying a link does not change who
+can use the files.
 
-These examples assume `subsoil` is available in your terminal. If you need to
-build or set it up, see the [development guide](DEVELOPMENT.md).
+Your team can also send an expiring share link. Its page shows the files shared
+with you and when the link stops working. Ask the sender for a new link if it has
+expired, or for help choosing an app to open a model.
+
+Each named version stays fixed. Changed files are added as a new version, so a
+link to an issued version continues to identify the same content. People who
+connect other software can find storage information and an exact integration
+reference under **Technical details**.
+
+## Try Subsoil on your computer
+
+The following examples use the `subsoil` command. Follow the
+[development guide](docs/DEVELOPMENT.md) to build it, then run commands from the
+repository root.
 
 ```sh
 subsoil demo --output build/showcase
 ```
 
-The demo creates a small example IFC model, starts two separate registries on
-your computer, and shares the model release between them. It checks that the
-received files match the published release. It also checks that a reader can
-receive a release but cannot publish one or access another collection.
-
-The result is saved in `build/showcase/demo-report.json`. The registries stop
-when the demo finishes; their data and the received release stay in that folder.
-Use a new output folder each time you run the demo.
-
-## How the data moves
-
-```mermaid
-flowchart LR
-    Source[Source IFC] --> Adapter[Selected IFC implementation / adapter]
-    Adapter --> Data[Typed binary data tables]
-    Adapter --> Geometry[Geometry payloads]
-    Data --> Release[Profile + JSON release index]
-    Geometry --> Release
-    Release --> Package[OCI artifact manifest]
-    Package --> Registry[Owner-controlled OCI registry]
-    Registry --> Consumers[Compatible tools / consumers]
-    Registry -->|authorized copy| Other[Independent OCI registry]
-```
-
-The registry keeps and delivers releases. Applications interpret the model,
-check requirements or calculate results. Other artifact types can use the same
-registry connection when the applications support their agreed format.
-
-Connected applications can list the models your account can open and show who
-published a version and when. The registry records these delivery details
-separately, so the model package keeps its original identity.
+The demo makes a small example model and shares it between two local stores. It
+checks that the files arrive intact and that a person with viewing access cannot
+add files or open another collection. The stores stop when it finishes. Their
+data and a report remain in `build/showcase`; use a new output folder for each run.
 
 ## Share your own model locally
 
-Browser applications can use the registry's own sign-in page, so they do not
-collect your password. Browser sessions renew automatically for eight hours,
-or 30 days with **Remember me**, across tabs and page refreshes. Developers can find the
-[application setup](DEVELOPMENT.md#connect-a-browser-application) in the development guide.
-
-The following example runs on your own computer. `127.0.0.1` is its local address.
-Replace `/path/to/model.ifc` with the path to your IFC file.
-
-First, create a user who can receive and publish releases in `project/model`,
-then start the registry. Choose a password of at least 12 characters when asked;
-it will not be shown while you type.
+Create an account and start a local server. Choose a password of at least 12
+characters when prompted.
 
 ```sh
 subsoil user add --data build/company-a writer \
@@ -79,85 +57,59 @@ subsoil user add --data build/company-a writer \
 subsoil serve --data build/company-a --listen 127.0.0.1:5000
 ```
 
-You can also open `http://127.0.0.1:5000/explore` to browse the registry.
-The embedded, read-only explorer lists repositories and tags in searchable pages
-of 20, with publication details, files and manifest JSON for each artifact.
-Search covers all names you can access; results are sorted by name.
-Sign in with your registry account;
-the explorer session lasts up to eight hours in that tab. Use **Copy reference**
-to copy an exact artifact reference for another tool.
-
-Keep that terminal open. In a second terminal, sign in:
+Open `http://127.0.0.1:5000/explore` to browse the files. Keep the server running
+and use a second terminal for the remaining commands.
 
 ```sh
 subsoil --plain-http login 127.0.0.1:5000 \
   --username writer --scope project/model:pull,push
-```
-
-Here, `project/model` names a collection of releases. `pull` means receive and
-`push` means publish. A **scope** says which collection and actions a login may
-use. Signing in does not give access beyond the user's permissions.
-`--plain-http` enables the local connection used in this example.
-
-Prepare, check and publish your release:
-
-```sh
 subsoil convert /path/to/model.ifc --output build/release --model-id design
 subsoil verify build/release
 subsoil --plain-http push build/release 127.0.0.1:5000/project/model:issued
 ```
 
-Publishing prints a fingerprint called a **digest**, beginning with `sha256:`.
-Copy that whole value and replace `DIGEST` below to receive that exact release:
+Replace `/path/to/model.ifc` with your model's path. In these commands,
+`project/model` is the folder name and `issued` is the version name. The command
+line and API call these a **repository** and a **tag**. `pull` allows receiving
+files; `push` allows adding them. `--plain-http` enables this local connection.
+
+Publishing prints a content fingerprint beginning with `sha256:`. Copy the
+whole value in place of `DIGEST` to receive that exact version:
 
 ```sh
 subsoil --plain-http pull 127.0.0.1:5000/project/model@DIGEST \
   --output build/received
 ```
 
-The label `issued` permanently names this release. Publish changed content under
-a new version name. The digest identifies the exact content you chose. Receiving
-a release also checks its files. Both conversion and receiving require a new
-output folder.
+Receiving also checks the files. Both conversion and receiving require a new
+output folder. Add changed content under a new version name.
 
-To create a user who can only receive releases:
+An account that only needs to receive files uses a `pull` grant:
 
 ```sh
 subsoil user add --data build/company-a reader --grant project/model:pull
-```
-
-In the CLI, that user signs in with:
-
-```sh
 subsoil --plain-http login 127.0.0.1:5000 \
   --username reader --scope project/model:pull
 ```
 
-CLI tokens expire after 15 minutes and do not renew automatically; run `login`
-again when needed. Use `subsoil copy SOURCE DESTINATION` to copy a release to
-another registry after signing in to both.
+Command-line sign-in expires after 15 minutes; run `login` again when needed.
+After signing in to two stores, use `subsoil copy SOURCE DESTINATION` to copy a
+version between them.
 
-For JSON policies spanning repositories or tags, browser approval and token
-exchange, and expiring shares, see [authorization and sharing](AUTHORIZATION.md).
+## Set up a team or connect an app
 
-## Try a shared registry
+The [deployment guide](docs/DEPLOYMENT.md) explains shared hosting, accounts, and
+persistent storage. [Access and sharing](docs/AUTHORIZATION.md) covers account rules,
+browser sign-in, and expiring links. The [development guide](docs/DEVELOPMENT.md)
+explains the file format and application connection.
 
-You can run a small cloud test so people can connect from different computers.
-Start with one registry and keep its saved data when replacing it. The
-[deployment guide](DEPLOYMENT.md) covers setup and account creation.
+Subsoil's model conversion is experimental and is not buildingSMART approved.
+It does not preserve every authoring detail needed to recreate the original IFC
+file. Include the source file with `convert --include-source` when you want it
+in the shared version. Verification checks file integrity and internal links;
+your team still decides whether a model is suitable for its project.
 
-## What to expect
-
-This is an experimental format for sharing model data and viewing geometry. It
-is not buildingSMART approved and does not preserve every authoring detail needed
-to recreate the original IFC file. Your source file stays outside the shared
-release unless you choose `convert --include-source`.
-
-Verification checks that files arrived intact and that the release's data links
-are consistent. Assessing who issued the model and whether it is correct for a
-project still requires your own checks. Live editing and merging remain part of
-the applications' workflows.
-
-## License
+The [brand guide](docs/BRANDING.md) covers the logo and interface language.
+You can also [read the project pitch](https://madsolame.com/subsoil/).
 
 Licensed under the [Apache License 2.0](LICENSE).

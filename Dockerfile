@@ -9,6 +9,7 @@ RUN apt-get update \
 WORKDIR /build
 COPY Cargo.toml Cargo.lock LICENSE ./
 COPY src ./src
+COPY assets ./assets
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/build/target \

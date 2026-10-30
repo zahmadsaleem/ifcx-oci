@@ -1,10 +1,13 @@
 # Cloud test deployment
 
-Run **one replica** behind an HTTPS cloud ingress/load balancer. Route the whole
-registry hostname to container port 5000 over a private HTTP connection; expose
-only HTTPS to clients. The registry does not terminate TLS itself. Configure DNS
-and a valid certificate for `registry.example.com`, and register the application's
-exact HTTPS callback URL, including its path and trailing slash if present.
+Run one Subsoil server behind an HTTPS ingress or load balancer, with persistent
+storage for its accounts and files. Route the whole hostname to container port
+5000 over a private HTTP connection. The ingress handles TLS, so clients use
+HTTPS even though the private connection uses HTTP.
+
+Configure DNS and a valid certificate for `registry.example.com`. If another
+application connects to Subsoil, register its exact HTTPS callback URL, including
+the path and any trailing slash.
 
 ## Start the registry
 
@@ -52,8 +55,8 @@ with the server stopped or using a consistent volume snapshot. The Docker smoke
 check below verifies that accounts, grants, remembered sessions, existing bearer
 tokens and pushed artifacts survive replacement on the same volume.
 
-The store uses format `subsoil-registry/2`. Other experimental store formats
-require a fresh directory.
+The store uses format `subsoil-registry/2`. Start with a fresh directory when
+using a different experimental store format.
 
 ## Application login
 
@@ -66,9 +69,11 @@ explicit public URL.
 
 For browser applications, fetch `/oauth/config` and use Authorization Code with
 PKCE S256 and request `subsoil:session`. Exchange the approved session root at
-`/token` for concrete repository tokens before making artifact requests. The password page is on the registry's public origin. Proxy the
-application's `/oauth/token` and `/oauth/revoke` routes to the registry routes of
-the same name. Preserve the browser's `Origin` (the registered callback's origin),
+`/token` for concrete repository tokens before making artifact requests. The
+password page is on the registry's public origin.
+
+Proxy the application's `/oauth/token` and `/oauth/revoke` routes to the registry
+routes of the same name. Preserve the browser's `Origin` (the registered callback's origin),
 `Cookie`, form body, response status and `Set-Cookie`; do not replace Origin with
 the private backend address or enable arbitrary cross-origin proxy requests.
 Remembered login uses a rotating `HttpOnly; Secure; SameSite=Strict` cookie scoped
@@ -88,7 +93,7 @@ Wildcards and `null` origins are rejected. OAuth callback registration remains
 separate and still requires the exact callback URL.
 
 Allowed origins receive CORS headers on `/v2`, `/v2/…`, `/token`, `/oauth/config`,
-`/oauth/token`, `/oauth/revoke` and `/shares` API routes, including error responses and unauthenticated
+`/oauth/token`, `/oauth/revoke` and `/shares` routes, including error responses and unauthenticated
 OPTIONS preflights. GET, HEAD, POST, PUT, PATCH, DELETE and OPTIONS are allowed,
 with Authorization, Accept, Content-Type, Content-Range and Range request headers.
 The browser can read WWW-Authenticate, Location, Link, Range, Content-Range,
@@ -136,8 +141,8 @@ strategy). Pending OAuth requests and authorization codes are in memory and are
 lost on restart; users can restart sign-in. Storage mutations use a server-local
 lock and assume one server, so a shared volume does not make replicas safe.
 One-off account jobs use SQLite transactions; they are not additional servers.
-Account administration APIs, including password reset, account disabling, and
-administrative session revocation, are deferred.
+Use the CLI for account administration. There is no account administration API
+for password resets, disabling accounts, or revoking sessions administratively.
 
 ## Verify the deployment
 
@@ -151,5 +156,5 @@ python3 tests/cloud_smoke.py subsoil:cloud-test
 
 The smoke check requires Docker, Python 3 and `openssl`, trusts its temporary
 localhost certificate, and removes its test containers and volume. Against your
-deployed hostname, use the [login, push and pull examples](README.md#share-your-own-model-locally)
+deployed hostname, use the [login, push and pull examples](../README.md#share-your-own-model-locally)
 with `registry.example.com` and omit `--plain-http`.

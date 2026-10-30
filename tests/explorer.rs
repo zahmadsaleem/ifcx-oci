@@ -93,7 +93,7 @@ impl Fixture {
             .unwrap()
             .to_string();
         let html = page.text().await?;
-        assert!(html.contains("Browse artifacts with read-only access for this tab."));
+        assert!(html.contains("Browse your files without making changes."));
         assert!(html.contains("class=\"remember\" hidden"));
         let id = html
             .split("name=\"request_id\" value=\"")

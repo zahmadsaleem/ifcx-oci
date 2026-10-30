@@ -37,16 +37,16 @@ pub(super) fn form(
         })
         .collect();
     let access = match (actions.contains(&"pull"), actions.contains(&"push")) {
-        (true, true) => "Read artifacts and publish new versions",
-        (true, false) => "Read your artifacts",
-        (false, true) => "Publish new artifact versions",
+        (true, true) => "View files and add new versions",
+        (true, false) => "View the files shared with you",
+        (false, true) => "Add files and new versions",
         _ => "Connect your account",
     };
     let explorer = pending.request.client_id == EXPLORER_CLIENT;
     let access = if explorer {
-        "Browse artifacts with read-only access for this tab."
+        "Browse your files without making changes."
     } else if actions.contains(&"session") {
-        "Approve current account permissions, including future repositories matching your wildcard grants. Additional permissions require approval again."
+        "This app can view and add files where your account already allows it, including new folders covered by your current access. You'll be asked again before it can do more."
     } else {
         access
     };
@@ -60,7 +60,14 @@ pub(super) fn form(
             "{{remember_checked}}",
             if remember { "checked" } else { "" },
         )
-        .replace("{{client}}", &escape(&pending.request.client_id))
+        .replace(
+            "{{client}}",
+            &escape(if explorer {
+                "your files"
+            } else {
+                &pending.request.client_id
+            }),
+        )
         .replace("{{access}}", access)
         .replace("{{error}}", &escape(message))
         .replace("{{request_id}}", &escape(id))
@@ -79,7 +86,7 @@ pub(super) fn form(
     // Chromium applies form-action to the 303 destination too. Allow only this
     // registered callback's origin in addition to our own credential endpoint.
     response.headers_mut().insert("content-security-policy", format!(
-        "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' {callback_origin}; frame-ancestors 'none'; base-uri 'none'"
+        "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; form-action 'self' {callback_origin}; frame-ancestors 'none'; base-uri 'none'"
     ).parse().expect("validated callback origin"));
     response
 }

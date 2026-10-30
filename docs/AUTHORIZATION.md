@@ -1,9 +1,13 @@
-# Subsoil authorization and sharing
+# Access and sharing
 
-Subsoil controls access to repositories and the artifacts published in them.
-An account's JSON policy defines what it may read or publish. Browser sessions
-and share credentials derive their permissions from that policy, while ordinary
-OCI clients use concrete repository tokens. The registry checks the effective
+An account determines which files a person or application can use. The file
+browser calls these collections **folders** and their saved editions **versions**.
+The command line and API use the OCI terms **repositories**, **artifacts**, and
+**tags**. This guide uses those terms when describing the API and its policies.
+
+Each account has a JSON policy defining what it may read or publish. Browser
+sessions and share links inherit limits from that policy. OCI clients receive
+tokens for specific repositories, and the server checks their effective
 permissions on every request.
 
 ## Repository names and artifact identity
@@ -270,8 +274,7 @@ token response, rather than standard OCI provenance.
 
 ## Provisioning and deployment
 
-Account administration APIs are deferred. The CLI provides local demo and
-operator access to the same JSON policy model:
+Manage accounts through the CLI, using the same JSON policy model as the API:
 
 ```sh
 subsoil user add --data /var/lib/subsoil alice

@@ -204,7 +204,9 @@ async fn login_retry_escapes_input_and_does_not_expand_user_supplied_template_fi
     );
     let bytes = axum::body::to_bytes(response.into_body(), 65536).await?;
     let html = String::from_utf8(bytes.to_vec())?;
-    assert!(!html.contains("<img") && !html.contains("<script>"));
+    assert_eq!(html.matches("<img ").count(), 1);
+    assert!(html.contains("<img src=\"/brand/logo.svg\""));
+    assert!(!html.contains("<img src=x") && !html.contains("<script>"));
     assert!(html.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
     assert!(html.contains("&quot;&gt;&lt;img src=x onerror=alert(1)&gt;{{request_id}}"));
     Ok(())

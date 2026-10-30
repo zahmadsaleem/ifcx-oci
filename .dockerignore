@@ -4,3 +4,6 @@
 !LICENSE
 !src/
 !src/**
+!assets/
+!assets/brand/
+!assets/brand/**

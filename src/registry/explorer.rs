@@ -16,7 +16,7 @@ fn hardened(body: impl IntoResponse) -> Response {
         ("referrer-policy", "no-referrer"),
         ("x-content-type-options", "nosniff"),
         ("x-frame-options", "DENY"),
-        ("content-security-policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"),
+        ("content-security-policy", "default-src 'none'; img-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"),
     ] {
         response.headers_mut().insert(name, value.parse().expect("static header"));
     }

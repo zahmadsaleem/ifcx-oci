@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <title>Sign in · Subsoil</title>
+  <link rel="icon" type="image/svg+xml" href="/brand/symbol.svg">
   <style>
     :root { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #182921; background: #f5f6f2; font-synthesis: none; }
     * { box-sizing: border-box; }
@@ -12,10 +13,8 @@
     body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; padding: 0 32px; }
     header, main, footer { width: 100%; max-width: 1040px; margin-inline: auto; }
     header { display: flex; justify-content: space-between; align-items: center; padding: 38px 0; }
-    .brand { display: inline-flex; align-items: center; gap: 12px; font-size: 19px; font-weight: 650; letter-spacing: -.6px; }
-    .mark { display: grid; grid-template-columns: repeat(2, 7px); gap: 3px; }
-    .mark i { width: 7px; height: 7px; background: #234e3d; }
-    .mark i:last-child { background: #9eb89c; }
+    .brand { display: inline-flex; align-items: center; }
+    .brand img { display: block; width: 160px; height: 40px; }
     .header-note, .eyebrow { font-size: 10px; letter-spacing: 1.8px; font-weight: 600; text-transform: uppercase; color: #69766c; }
     main { display: grid; grid-template-columns: 1fr 1fr; margin-block: auto; border: 1px solid #dce2d7; border-radius: 16px; overflow: hidden; background: #fff; }
     .intro { position: relative; isolation: isolate; display: flex; flex-direction: column; justify-content: space-between; padding: 48px; background: #edf1e8; border-right: 1px solid #dce2d7; overflow: hidden; }
@@ -69,24 +68,24 @@
 </head>
 <body>
   <header>
-    <div class="brand"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>Subsoil</div>
-    <span class="header-note">Your artifact registry</span>
+    <div class="brand"><img src="/brand/logo.svg" alt="Subsoil" width="160" height="40"></div>
+    <span class="header-note">Your shared files</span>
   </header>
   <main>
-    <section class="intro" aria-label="Your registry account">
+    <section class="intro" aria-label="Your project files">
       <div>
-        <p class="eyebrow">A shared place. Your access.</p>
-        <h1>Your artifacts,<br>connected.</h1>
-        <p class="lead">Bring your artifacts into the tools you work with. Start with your registry account.</p>
+        <p class="eyebrow">Your team's shared files</p>
+        <h1>Your files,<br>in one place.</h1>
+        <p class="lead">Find your project files and the versions your team has shared with you.</p>
       </div>
-      <div class="assurance"><span class="dot" aria-hidden="true"></span>Your password stays with this registry.</div>
+      <div class="assurance"><span class="dot" aria-hidden="true"></span>Your password stays with Subsoil.</div>
     </section>
     <section class="panel" aria-labelledby="sign-in-title">
       <h2 id="sign-in-title">Sign in</h2>
       <p class="subtitle">Continue to <strong>{{client}}</strong></p>
       <div class="access">
         <span class="check" aria-hidden="true">✓</span>
-        <div><p>{{access}}</p><small>Your existing permissions apply.</small></div>
+        <div><p>{{access}}</p><small>Your account decides which files you can use.</small></div>
       </div>
       <p class="error" id="signin-error" role="alert">{{error}}</p>
       <form method="post" action="/oauth/authorize">
@@ -97,13 +96,13 @@
         <input id="password" name="password" type="password" autocomplete="current-password" required aria-describedby="signin-error">
         <label class="remember" {{remember_hidden}}><input type="checkbox" name="remember_me" value="true" {{remember_checked}} {{remember_disabled}}>Remember me for 30 days</label>
         <div class="actions">
-          <button class="primary" name="decision" value="allow"><span>Sign in &amp; connect</span><span class="arrow" aria-hidden="true">→</span></button>
+          <button class="primary" name="decision" value="allow"><span>Sign in &amp; continue</span><span class="arrow" aria-hidden="true">→</span></button>
           <button class="secondary" name="decision" value="deny" formnovalidate>Cancel</button>
         </div>
       </form>
       <p class="return">You'll return to <span>{{destination}}</span></p>
     </section>
   </main>
-  <footer><span>Only the artifacts you're allowed to access.</span><span>Connected for your working day.</span></footer>
+  <footer><span>Subsoil · Your project files</span><span>Ask your project team if you need an account.</span></footer>
 </body>
 </html>

@@ -15,8 +15,9 @@
             filter = path: type:
               let
                 relative = pkgs.lib.removePrefix ((toString ./.) + "/") (toString path);
-              in (toString path) == (toString ./.) || builtins.elem relative [ "Cargo.toml" "Cargo.lock" "LICENSE" "src" "tests" ]
-                 || pkgs.lib.hasPrefix "src/" relative || pkgs.lib.hasPrefix "tests/" relative;
+              in (toString path) == (toString ./.) || builtins.elem relative [ "Cargo.toml" "Cargo.lock" "LICENSE" "src" "tests" "assets" "assets/brand" ]
+                 || pkgs.lib.hasPrefix "src/" relative || pkgs.lib.hasPrefix "tests/" relative
+                 || pkgs.lib.hasPrefix "assets/brand/" relative;
           };
           cargoLock = {
             lockFile = ./Cargo.lock;

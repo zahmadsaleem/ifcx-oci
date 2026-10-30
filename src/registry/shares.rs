@@ -188,7 +188,7 @@ async fn redeem(
 
 pub(super) async fn landing() -> Response {
     let mut response = axum::response::Html(include_str!("share.html")).into_response();
-    for (name,value) in [("cache-control","no-store"),("referrer-policy","no-referrer"),("x-content-type-options","nosniff"),("content-security-policy","default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")] {
+    for (name,value) in [("cache-control","no-store"),("referrer-policy","no-referrer"),("x-content-type-options","nosniff"),("content-security-policy","default-src 'none'; img-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")] {
         response.headers_mut().insert(header::HeaderName::from_static(name),value.parse().expect("static header"));
     }
     response
