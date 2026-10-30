@@ -393,7 +393,8 @@ pub async fn run(output: &Path, oras: Option<&Path>) -> Result<Value> {
     );
     let (expired, _) = a
         .auth
-        .issue("writer", &["repository:project/model:pull".into()], 0)?;
+        .issue("writer", &["repository:project/model:pull".into()], 1)?;
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     let http = reqwest::Client::new();
     ensure!(
         http.get(format!("http://{host_a}/v2/"))

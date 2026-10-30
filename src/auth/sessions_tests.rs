@@ -59,7 +59,7 @@ fn remembered_sessions_last_30_days_and_refresh_does_not_expand_approved_grants(
     let (root, auth) = fixture()?;
     let first = auth.start_session(
         "reader",
-        &["registry:catalog:read".into()],
+        &[super::super::CATALOG_GRANTS_SCOPE.into()],
         "model-client",
         "https://app.example/callback",
         true,
@@ -77,7 +77,7 @@ fn remembered_sessions_last_30_days_and_refresh_does_not_expand_approved_grants(
     assert!(!auth.permits(&second.claims, "private/model", "pull")?);
     let db = Connection::open(root.path().join("auth.sqlite"))?;
     db.execute(
-        "DELETE FROM grants WHERE user='reader' AND action='pull'",
+        "DELETE FROM policy_rules WHERE user='reader' AND rule LIKE '%pull%'",
         [],
     )?;
     let third = auth.rotate_session(&second.refresh_token, "model-client")?;
@@ -165,5 +165,53 @@ fn concurrent_reuse_is_atomic_and_revokes_the_rotated_token() -> Result<()> {
                 .access_token
         )
         .is_err());
+    Ok(())
+}
+
+#[test]
+fn failed_token_and_session_issuance_do_not_leave_persistent_credentials() -> Result<()> {
+    let (root, auth) = fixture()?;
+    let db = Connection::open(root.path().join("auth.sqlite"))?;
+    let counts = || -> Result<(i64, i64, i64)> {
+        Ok((
+            db.query_row("SELECT COUNT(*) FROM authorizations", [], |r| r.get(0))?,
+            db.query_row("SELECT COUNT(*) FROM oauth_sessions", [], |r| r.get(0))?,
+            db.query_row("SELECT COUNT(*) FROM oauth_refresh_tokens", [], |r| {
+                r.get(0)
+            })?,
+        ))
+    };
+    let before = counts()?;
+    assert!(auth
+        .issue("reader", &["unsupported:scope".into()], 900)
+        .is_err());
+    assert_eq!(counts()?, before);
+    for table in ["oauth_sessions", "oauth_refresh_tokens"] {
+        db.execute_batch(&format!("CREATE TRIGGER reject_session_insert BEFORE INSERT ON {table} BEGIN SELECT RAISE(ABORT,'simulated storage failure'); END;"))?;
+        assert!(auth
+            .start_session(
+                "reader",
+                &[super::super::SESSION_SCOPE.into()],
+                "client",
+                "http://localhost/callback",
+                false
+            )
+            .is_err());
+        assert_eq!(
+            counts()?,
+            before,
+            "failed {table} insert must roll back the entire session"
+        );
+        db.execute_batch("DROP TRIGGER reject_session_insert;")?;
+    }
+    let valid = auth.start_session(
+        "reader",
+        &[super::super::SESSION_SCOPE.into()],
+        "client",
+        "http://localhost/callback",
+        false,
+    )?;
+    auth.validate(&valid.access_token)?;
+    assert_eq!(counts()?, (1, 1, 1));
     Ok(())
 }

@@ -29,18 +29,23 @@ pub(super) fn form(
         .scope
         .split_whitespace()
         .flat_map(|scope| {
-            if scope == "registry:catalog:read" {
-                vec!["pull", "push"]
+            if scope == crate::auth::SESSION_SCOPE {
+                vec!["session"]
             } else {
                 scope.rsplit(':').next().unwrap_or("").split(',').collect()
             }
         })
         .collect();
     let access = match (actions.contains(&"pull"), actions.contains(&"push")) {
-        (true, true) => "View models and publish updates",
-        (true, false) => "View your models",
-        (false, true) => "Publish model updates",
+        (true, true) => "Read artifacts and publish new versions",
+        (true, false) => "Read your artifacts",
+        (false, true) => "Publish new artifact versions",
         _ => "Connect your account",
+    };
+    let access = if actions.contains(&"session") {
+        "Approve current account permissions, including future repositories matching your wildcard grants. Additional permissions require approval again."
+    } else {
+        access
     };
     let html = include_str!("login.html")
         .replace(

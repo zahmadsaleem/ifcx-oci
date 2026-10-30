@@ -20,9 +20,12 @@ pub struct RefreshSession {
     pub expires: u64,
     pub remember: bool,
     pub access: Vec<Access>,
+    pub authorization_id: String,
+    pub root: bool,
 }
 
 pub struct SessionTokens {
+    pub permissions: Vec<crate::policy::Grant>,
     pub access_token: String,
     pub claims: Claims,
     pub refresh_token: String,
@@ -33,7 +36,7 @@ pub(super) fn schema(db: &Connection) -> Result<()> {
     db.execute_batch("CREATE TABLE IF NOT EXISTS oauth_sessions (
         id TEXT PRIMARY KEY,user TEXT NOT NULL REFERENCES users(name) ON DELETE CASCADE,
         client_id TEXT NOT NULL,redirect_uri TEXT NOT NULL,expires INTEGER NOT NULL,
-        remember INTEGER NOT NULL,access TEXT NOT NULL,revoked INTEGER NOT NULL DEFAULT 0);
+        remember INTEGER NOT NULL,access TEXT NOT NULL,revoked INTEGER NOT NULL DEFAULT 0,authorization TEXT NOT NULL,root INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS oauth_refresh_tokens (
         hash TEXT PRIMARY KEY,session_id TEXT NOT NULL REFERENCES oauth_sessions(id) ON DELETE CASCADE,
         used INTEGER NOT NULL DEFAULT 0);
@@ -63,6 +66,8 @@ fn from_row(row: &Row<'_>) -> rusqlite::Result<RefreshSession> {
             .try_into()
             .map_err(|_| rusqlite::Error::IntegralValueOutOfRange(4, expires))?,
         remember: row.get(5)?,
+        authorization_id: row.get(7)?,
+        root: row.get(8)?,
         access: serde_json::from_str(&access).map_err(|e| {
             rusqlite::Error::FromSqlConversionFailure(6, rusqlite::types::Type::Text, Box::new(e))
         })?,
@@ -78,19 +83,65 @@ impl Auth {
         redirect_uri: &str,
         remember: bool,
     ) -> Result<SessionTokens> {
+        self.start_approved_session(
+            (user, self.grants(user)?),
+            scopes,
+            client_id,
+            redirect_uri,
+            remember,
+        )
+    }
+
+    pub(crate) fn start_approved_session(
+        &self,
+        approved: (&str, Vec<crate::policy::Grant>),
+        scopes: &[String],
+        client_id: &str,
+        redirect_uri: &str,
+        remember: bool,
+    ) -> Result<SessionTokens> {
+        let (user, permissions) = approved;
+        let id = Uuid::new_v4().to_string();
+        let expires = now()
+            + if remember {
+                REMEMBER_SECONDS
+            } else {
+                SESSION_SECONDS
+            };
+        let root = scopes == [super::SESSION_SCOPE.to_string()];
+        let mut context = super::AuthorizationContext::new(
+            user,
+            vec![permissions],
+            expires,
+            Some(id.clone()),
+            None,
+        )?;
+        let catalog = ["registry:catalog:*".into()];
+        let access = self.requested_in(&context, if root { &catalog } else { scopes })?;
+        if !root {
+            // A repository-only approval may not later mint access to other resources.
+            // Catalog grants remain an explicit extension, not an implicit widening.
+            let approved: Vec<_> = access
+                .iter()
+                .filter(|a| a.kind == "repository")
+                .map(|a| crate::policy::Grant::exact(a.name.clone(), a.actions.clone()))
+                .collect();
+            // Catalog-only approval can list the captured policy, while its JWT
+            // still carries no repository access or token-exchange capability.
+            if !approved.is_empty() {
+                context.limits.push(approved);
+            }
+        }
         let session = RefreshSession {
-            id: Uuid::new_v4().to_string(),
+            id,
             user: user.into(),
             client_id: client_id.into(),
             redirect_uri: redirect_uri.into(),
-            expires: now()
-                + if remember {
-                    REMEMBER_SECONDS
-                } else {
-                    SESSION_SECONDS
-                },
+            expires,
             remember,
-            access: self.requested_access(user, scopes)?,
+            access,
+            authorization_id: context.id.clone(),
+            root,
         };
         let refresh_token = token();
         {
@@ -99,13 +150,14 @@ impl Auth {
                 .lock()
                 .map_err(|_| anyhow::anyhow!("Identity store lock failed"))?;
             let tx = db.transaction()?;
+            context.store(&tx)?;
             tx.execute(
                 "DELETE FROM oauth_sessions WHERE expires<=?1",
                 [i64::try_from(now())?],
             )?;
             tx.execute(
-                "INSERT INTO oauth_sessions(id,user,client_id,redirect_uri,expires,remember,access)
-                VALUES (?1,?2,?3,?4,?5,?6,?7)",
+                "INSERT INTO oauth_sessions(id,user,client_id,redirect_uri,expires,remember,access,authorization,root)
+                VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
                 params![
                     session.id,
                     session.user,
@@ -113,7 +165,7 @@ impl Auth {
                     session.redirect_uri,
                     i64::try_from(session.expires)?,
                     session.remember,
-                    serde_json::to_string(&session.access)?
+                    serde_json::to_string(&session.access)?,session.authorization_id,session.root
                 ],
             )?;
             tx.execute(
@@ -133,7 +185,7 @@ impl Auth {
             .map_err(|_| anyhow::anyhow!("Identity store lock failed"))?;
         Ok(db
             .query_row(
-                "SELECT s.id,s.user,s.client_id,s.redirect_uri,s.expires,s.remember,s.access
+                "SELECT s.id,s.user,s.client_id,s.redirect_uri,s.expires,s.remember,s.access,s.authorization,s.root
             FROM oauth_refresh_tokens t JOIN oauth_sessions s ON s.id=t.session_id WHERE t.hash=?1",
                 [hash(refresh_token)],
                 from_row,
@@ -154,9 +206,9 @@ impl Auth {
                 [i64::try_from(now())?],
             )?;
             let (session, revoked, used) = tx.query_row(
-                "SELECT s.id,s.user,s.client_id,s.redirect_uri,s.expires,s.remember,s.access,s.revoked,t.used
+                "SELECT s.id,s.user,s.client_id,s.redirect_uri,s.expires,s.remember,s.access,s.authorization,s.root,s.revoked,t.used
                 FROM oauth_refresh_tokens t JOIN oauth_sessions s ON s.id=t.session_id WHERE t.hash=?1",
-                [hash(refresh_token)], |row| Ok((from_row(row)?,row.get::<_,bool>(7)?,row.get::<_,bool>(8)?)))
+                [hash(refresh_token)], |row| Ok((from_row(row)?,row.get::<_,bool>(9)?,row.get::<_,bool>(10)?)))
                 .optional()?.context("Invalid refresh token")?;
             ensure!(
                 session.client_id == client_id && !revoked,
@@ -210,13 +262,12 @@ impl Auth {
             }
             access.push(grant);
         }
-        let (access_token, claims) = self.sign_access(
-            &session.user,
-            access,
-            TOKEN_SECONDS.min(remaining),
-            Some((&session.id, session.expires)),
-        )?;
+        let mut context = self.authorization(&session.authorization_id)?;
+        context.expires = context.expires.min(session.expires);
+        let (access_token, claims) =
+            self.sign_authorization(&context, access, session.root, TOKEN_SECONDS.min(remaining))?;
         Ok(SessionTokens {
+            permissions: context.limits.first().cloned().unwrap_or_default(),
             access_token,
             claims,
             refresh_token,

@@ -1,6 +1,6 @@
 //! Local identity store, Argon2 passwords and repository-scoped JWTs.
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeSet,
     fs,
     path::Path,
     sync::Mutex,
@@ -14,12 +14,18 @@ use argon2::{
 };
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use rand_core::{OsRng, RngCore};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 pub const TOKEN_SECONDS: u64 = 900;
+mod authorization;
+mod grants;
 mod sessions;
+mod shares;
+pub use authorization::{AuthorizationContext, CATALOG_GRANTS_SCOPE, SESSION_SCOPE};
+pub use grants::StoredGrant;
+pub use shares::{Share, ShareBinding, ShareCreated, ShareSpec, DEFAULT_SHARE_MAX_SECONDS};
 mod throttle;
 pub use sessions::{RefreshSession, SessionTokens, REMEMBER_SECONDS, SESSION_SECONDS};
 pub(crate) use throttle::PasswordLoginError;
@@ -43,6 +49,11 @@ pub struct Claims {
     pub access: Vec<Access>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sid: Option<String>,
+    pub aid: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub share_id: Option<String>,
+    #[serde(default)]
+    pub root: bool,
 }
 
 pub struct Auth {
@@ -117,10 +128,15 @@ impl Auth {
         let db_path = root.join("auth.sqlite");
         let db = Connection::open(&db_path)?;
         private_file(&db_path)?;
-        db.execute_batch("PRAGMA foreign_keys=ON;
+        db.execute_batch(
+            "PRAGMA foreign_keys=ON;
           CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY,value TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS users (name TEXT PRIMARY KEY,password_hash TEXT NOT NULL);
-          CREATE TABLE IF NOT EXISTS grants (user TEXT NOT NULL REFERENCES users(name),repository TEXT NOT NULL,action TEXT NOT NULL CHECK(action IN ('pull','push')),PRIMARY KEY(user,repository,action));")?;
+",
+        )?;
+        grants::schema(&db)?;
+        authorization::schema(&db)?;
+        shares::schema(&db)?;
         sessions::schema(&db)?;
         db.execute(
             "INSERT OR IGNORE INTO settings VALUES ('id',?1)",
@@ -169,31 +185,19 @@ impl Auth {
         tx.execute("INSERT INTO users VALUES (?1,?2)", params![name, hash])
             .context("User already exists or cannot be created")?;
         for (repo, actions) in parsed {
-            for action in actions {
-                tx.execute(
-                    "INSERT INTO grants VALUES (?1,?2,?3)",
-                    params![name, repo, action],
-                )?;
-            }
+            let rule = crate::policy::Grant::exact(repo, actions);
+            tx.execute(
+                "INSERT INTO policy_rules(user,rule) VALUES (?1,?2)",
+                params![name, serde_json::to_string(&rule)?],
+            )?;
         }
         tx.commit()?;
         Ok(())
     }
 
     pub fn grant(&self, user: &str, grant: &str) -> Result<()> {
-        let (repo, actions) = parse_grant(grant)?;
-        let mut db = self
-            .db
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Identity store lock failed"))?;
-        let tx = db.transaction()?;
-        for action in actions {
-            tx.execute(
-                "INSERT OR IGNORE INTO grants VALUES (?1,?2,?3)",
-                params![user, repo, action],
-            )?;
-        }
-        tx.commit()?;
+        let (repository, actions) = parse_grant(grant)?;
+        self.add_rule(user, &crate::policy::Grant::exact(repository, actions))?;
         Ok(())
     }
 
@@ -219,97 +223,28 @@ impl Auth {
     }
 
     fn allowed(&self, user: &str, repo: &str, action: &str) -> Result<bool> {
+        Ok(self
+            .grants(user)?
+            .iter()
+            .any(|r| r.repository(repo, action)))
+    }
+
+    pub fn issue(&self, user: &str, scopes: &[String], ttl: u64) -> Result<(String, Claims)> {
+        let context = AuthorizationContext::new(
+            user,
+            vec![self.grants(user)?],
+            now().saturating_add(ttl),
+            None,
+            None,
+        )?;
+        let access = self.requested_in(&context, scopes)?;
+        let issued = self.sign_authorization(&context, access, false, ttl)?;
         let db = self
             .db
             .lock()
             .map_err(|_| anyhow::anyhow!("Identity store lock failed"))?;
-        Ok(db.query_row(
-            "SELECT EXISTS(SELECT 1 FROM grants WHERE user=?1 AND repository=?2 AND action=?3)",
-            params![user, repo, action],
-            |r| r.get(0),
-        )?)
-    }
-
-    pub fn issue(&self, user: &str, scopes: &[String], ttl: u64) -> Result<(String, Claims)> {
-        self.sign_access(user, self.requested_access(user, scopes)?, ttl, None)
-    }
-
-    fn requested_access(&self, user: &str, scopes: &[String]) -> Result<Vec<Access>> {
-        let mut access = Vec::new();
-        // Discovery returns the account's exact grants, never a wildcard repository grant.
-        if scopes.iter().any(|scope| scope == "registry:catalog:read") {
-            let db = self
-                .db
-                .lock()
-                .map_err(|_| anyhow::anyhow!("Identity store lock failed"))?;
-            let mut statement = db.prepare(
-                "SELECT repository,action FROM grants WHERE user=?1 ORDER BY repository,action",
-            )?;
-            let rows = statement.query_map([user], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            })?;
-            let mut repositories: BTreeMap<String, Vec<String>> = BTreeMap::new();
-            for row in rows {
-                let (repository, action) = row?;
-                repositories.entry(repository).or_default().push(action);
-            }
-            access.extend(repositories.into_iter().map(|(name, actions)| Access {
-                kind: "repository".into(),
-                name,
-                actions,
-            }));
-            access.push(Access {
-                kind: "registry".into(),
-                name: "catalog".into(),
-                actions: vec!["read".into()],
-            });
-        }
-        for scope in scopes {
-            let Some(rest) = scope.strip_prefix("repository:") else {
-                continue;
-            };
-            let (name, actions) = parse_grant(rest)?;
-            let mut permitted = Vec::new();
-            for action in actions {
-                if self.allowed(user, &name, &action)? {
-                    permitted.push(action);
-                }
-            }
-            access.push(Access {
-                kind: "repository".into(),
-                name,
-                actions: permitted,
-            });
-        }
-        Ok(access)
-    }
-
-    fn sign_access(
-        &self,
-        user: &str,
-        access: Vec<Access>,
-        ttl: u64,
-        session: Option<(&str, u64)>,
-    ) -> Result<(String, Claims)> {
-        let issued = now();
-        let expires = session.map_or(issued + ttl, |(_, deadline)| deadline.min(issued + ttl));
-        ensure!(session.is_none() || expires > issued, "Session has expired");
-        let claims = Claims {
-            iss: self.issuer.clone(),
-            aud: self.service.clone(),
-            sub: user.into(),
-            iat: issued,
-            exp: expires,
-            jti: Uuid::new_v4().to_string(),
-            access,
-            sid: session.map(|(id, _)| id.to_string()),
-        };
-        let token = encode(
-            &Header::new(Algorithm::HS256),
-            &claims,
-            &EncodingKey::from_secret(&self.secret),
-        )?;
-        Ok((token, claims))
+        context.store(&db)?;
+        Ok(issued)
     }
 
     pub fn validate(&self, token: &str) -> Result<Claims> {
@@ -341,13 +276,16 @@ impl Auth {
             )?;
             ensure!(active, "Session has expired or been revoked");
         }
+        drop(db);
+        self.check_authorization(&claims)?;
         Ok(claims)
     }
 
     pub fn permits(&self, claims: &Claims, repo: &str, action: &str) -> Result<bool> {
+        self.check_authorization(claims)?;
         Ok(claims.access.iter().any(|a| {
             a.kind == "repository" && a.name == repo && a.actions.iter().any(|v| v == action)
-        }) && self.allowed(&claims.sub, repo, action)?)
+        }) && self.can_repository(&self.authorization(&claims.aid)?, repo, action)?)
     }
 }
 
@@ -386,7 +324,16 @@ mod tests {
         assert!(auth.permits(&verified, "project/model", "pull")?);
         assert!(!auth.permits(&verified, "project/model", "push")?);
         assert!(!auth.permits(&verified, "private/model", "pull")?);
-        assert!(auth.validate(&auth.issue("reader", &[], 0)?.0).is_err());
+        assert!(auth.issue("reader", &[], 0).is_err());
+        let mut expired = claims.clone();
+        expired.exp = now();
+        assert!(auth
+            .validate(&encode(
+                &Header::new(Algorithm::HS256),
+                &expired,
+                &EncodingKey::from_secret(&auth.secret)
+            )?)
+            .is_err());
         assert!(auth.validate("invalid.jwt.signature").is_err());
         let mut changed = claims.clone();
         changed.aud = "another-registry".into();

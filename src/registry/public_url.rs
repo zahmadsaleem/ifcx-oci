@@ -56,6 +56,13 @@ impl Registry {
             );
             self.set_public_url(&format!("http://{address}"))?;
         }
+        let origin = reqwest::Url::parse(&self.public_origin())?;
+        let registry = format!(
+            "{}{}",
+            origin.host_str().expect("public host"),
+            origin.port().map(|p| format!(":{p}")).unwrap_or_default()
+        );
+        self.auth.validate_registry(&registry)?;
         self.oauth.validate_transport(self.secure_cookies())
     }
 }

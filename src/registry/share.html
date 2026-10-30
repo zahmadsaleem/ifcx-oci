@@ -1,0 +1,15 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Shared registry artifacts</title>
+<style>body{font:16px system-ui;max-width:64rem;margin:4rem auto;padding:0 1rem}button{margin:.3rem;padding:.5rem}li{margin:1rem 0}code{overflow-wrap:anywhere}</style>
+<h1>Shared registry artifacts</h1><p id="status">Opening share…</p><ul id="repositories"></ul>
+<script>
+(async()=>{
+ const secret=new URLSearchParams(location.hash.slice(1)).get('secret');
+ history.replaceState(null,'',location.pathname);
+ const status=document.getElementById('status'), list=document.getElementById('repositories');
+ let root, deadline=0;
+ async function login(){const r=await fetch('/shares/redeem',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({secret}),credentials:'omit',cache:'no-store'});if(!r.ok)throw Error('Share expired, revoked, or invalid.');const s=await r.json();root=s.access_token;deadline=Date.now()+s.expires_in*1000;return s;}
+ async function request(path,repo){if(Date.now()>deadline-10000)await login();let token=root;if(repo){const r=await fetch('/token?scope='+encodeURIComponent('repository:'+repo+':pull'),{headers:{Authorization:'Bearer '+root},credentials:'omit',cache:'no-store'});if(!r.ok)throw Error('Access denied.');token=(await r.json()).access_token;}const r=await fetch(path,{headers:{Authorization:'Bearer '+token},credentials:'omit',cache:'no-store'});if(!r.ok)throw Error('Artifact unavailable ('+r.status+').');return r;}
+ function row(text){const item=document.createElement('li');item.textContent=text;list.append(item);return item;}
+ try{const session=await login();status.textContent='Access expires '+new Date(session.session_expires_at*1000).toLocaleString()+'. Paste this share link into a compatible viewer to open supported models.';const catalog=await(await request('/v2/_catalog?n=1000')).json();for(const repo of catalog.repositories){const tags=await(await request('/v2/'+repo+'/tags/list',repo)).json();for(const tag of tags.tags){const item=row(repo+':'+tag);const b=document.createElement('button');b.textContent='Inspect manifest';b.onclick=async()=>{try{const manifest=await(await request('/v2/'+repo+'/manifests/'+tag,repo)).json();const pre=document.createElement('pre');pre.textContent=JSON.stringify(manifest,null,2);item.append(pre);b.remove();}catch(e){status.textContent=e.message;}};item.append(b);}}if(!list.children.length)row('No named artifacts available.');}catch(e){status.textContent=e.message;}
+})();
+</script></html>

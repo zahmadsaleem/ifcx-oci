@@ -8,6 +8,10 @@ struct Publication {
     digest: String,
     publisher: String,
     pushed_at: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    share_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    created_by: Option<String>,
 }
 
 fn path(registry: &Registry, repo: &str, reference: &str) -> Result<PathBuf> {
@@ -25,11 +29,17 @@ pub(super) fn record(
     repo: &str,
     reference: &str,
     digest: &str,
-    publisher: &str,
+    claims: &crate::auth::Claims,
 ) -> Result<()> {
     let value = serde_json::to_vec(&Publication {
         digest: digest.into(),
-        publisher: publisher.into(),
+        publisher: claims
+            .share_id
+            .as_ref()
+            .map(|id| format!("share:{id}"))
+            .unwrap_or_else(|| claims.sub.clone()),
+        share_id: claims.share_id.clone(),
+        created_by: claims.share_id.as_ref().map(|_| claims.sub.clone()),
         pushed_at: crate::auth::now(),
     })?;
     // Digest reads describe the first observed publication of these bytes here.
@@ -58,8 +68,15 @@ pub(super) fn headers(
     if value.digest != digest {
         return Ok(Vec::new());
     }
-    Ok(vec![
+    let mut headers = vec![
         ("ifcx-registry-publisher", value.publisher),
         ("ifcx-registry-pushed-at", value.pushed_at.to_string()),
-    ])
+    ];
+    if let Some(id) = value.share_id {
+        headers.push(("ifcx-registry-share-id", id));
+    }
+    if let Some(creator) = value.created_by {
+        headers.push(("ifcx-registry-created-by", creator));
+    }
+    Ok(headers)
 }

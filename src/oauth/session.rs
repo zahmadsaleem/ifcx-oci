@@ -90,6 +90,7 @@ fn reply(tokens: SessionTokens, clear_previous: bool) -> Response {
     let mut value = json!({"token":tokens.access_token,"access_token":tokens.access_token,
         "token_type":"Bearer","expires_in":tokens.claims.exp.saturating_sub(tokens.claims.iat),
         "subject":tokens.claims.sub,"access":tokens.claims.access,
+        "permissions":tokens.permissions,"authorization_type":if tokens.session.root {"session"} else {"access"},
         "remember_me":tokens.session.remember,"session_expires_at":tokens.session.expires,
         "session_expires_in":remaining});
     if !tokens.session.remember {
@@ -142,8 +143,8 @@ pub(super) fn initial(
             return error(StatusCode::INTERNAL_SERVER_ERROR, "server_error");
         }
     }
-    match registry.auth.start_session(
-        &code.user,
+    match registry.auth.start_approved_session(
+        (&code.user, code.permissions),
         requested,
         &code.request.client_id,
         &code.request.redirect_uri,

@@ -22,7 +22,7 @@ pub(super) async fn catalog(
         return Err(ApiError(
             StatusCode::METHOD_NOT_ALLOWED,
             "UNSUPPORTED",
-            "Use GET for model listing".into(),
+            "Use GET for repository listing".into(),
         ));
     }
     let limit = query
@@ -38,15 +38,10 @@ pub(super) async fn catalog(
     }
     let after = query.get("last").map(String::as_str).unwrap_or("");
     let mut repositories = Vec::new();
-    for access in &claims.access {
-        if access.kind == "repository"
-            && access.name.as_str() > after
-            && registry.auth.permits(&claims, &access.name, "pull")?
-        {
-            let manifests = registry.repo(&access.name).join("manifests");
-            if manifests.is_dir() && fs::read_dir(manifests)?.next().transpose()?.is_some() {
-                repositories.push(access.name.clone());
-            }
+    let layers = registry.auth.limits(&claims)?;
+    for repo in registry.repositories()? {
+        if repo.as_str() > after && !registry.visible_roots(&layers, &repo)?.is_empty() {
+            repositories.push(repo);
         }
     }
     repositories.sort();

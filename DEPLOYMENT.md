@@ -33,6 +33,11 @@ For a noninteractive cloud job, use `user add --password-stdin` and pipe a passw
 from your secret manager into its standard input. Passwords require at least 12
 characters. `user add --grant project/model:pull,push` also provisions grants in
 one job; `user grant` can add permissions later against the same mounted volume.
+
+For repository wildcards, tag restrictions, and expiring shares, use the JSON
+policy model described in [AUTHORIZATION.md](AUTHORIZATION.md). Imported policies
+are bound to the deployment's public registry host.
+
 New persistent disks must be empty and writable by UID 65532; initialize ownership
 through the platform's volume setup. Do not mount a root-owned disk over `/data`
 without arranging that ownership.
@@ -40,12 +45,15 @@ without arranging that ownership.
 ## Storage and replacement
 
 Persist **all of `/data`**, including `registry.json`, `auth.sqlite` (accounts,
-grants and browser sessions), `signing.key`, `blobs/` and `repositories/` (including
+policies, browser sessions and shares), `signing.key`, `blobs/` and `repositories/` (including
 uploads). Keep this volume when replacing the container, and supply the same
 public URL and OAuth registration to its replacement. Back up the whole directory
 with the server stopped or using a consistent volume snapshot. The Docker smoke
 check below verifies that accounts, grants, remembered sessions, existing bearer
 tokens and pushed artifacts survive replacement on the same volume.
+
+The store uses format `ifcx-oci-registry/2`. Other experimental store formats
+require a fresh directory.
 
 ## Application login
 
@@ -57,7 +65,8 @@ loopback public URL for local development. Non-loopback listeners require an
 explicit public URL.
 
 For browser applications, fetch `/oauth/config` and use Authorization Code with
-PKCE S256. The password page is on the registry's public origin. Proxy the
+PKCE S256 and request `ifcx:session`. Exchange the approved session root at
+`/token` for concrete repository tokens before making artifact requests. The password page is on the registry's public origin. Proxy the
 application's `/oauth/token` and `/oauth/revoke` routes to the registry routes of
 the same name. Preserve the browser's `Origin` (the registered callback's origin),
 `Cookie`, form body, response status and `Set-Cookie`; do not replace Origin with
@@ -79,7 +88,7 @@ Wildcards and `null` origins are rejected. OAuth callback registration remains
 separate and still requires the exact callback URL.
 
 Allowed origins receive CORS headers on `/v2`, `/v2/…`, `/token`, `/oauth/config`,
-`/oauth/token` and `/oauth/revoke`, including error responses and unauthenticated
+`/oauth/token`, `/oauth/revoke` and `/shares` API routes, including error responses and unauthenticated
 OPTIONS preflights. GET, HEAD, POST, PUT, PATCH, DELETE and OPTIONS are allowed,
 with Authorization, Accept, Content-Type, Content-Range and Range request headers.
 The browser can read WWW-Authenticate, Location, Link, Range, Content-Range,
@@ -118,13 +127,17 @@ forwarded IP headers, following [OWASP's account-based failed-login guidance](ht
 Throttled attempts return 429 with `Retry-After`. Restart clears these budgets;
 apply ingress request limits too for an internet-facing test service.
 
+Share TTL is capped by `--share-max-age <seconds>` (default 2592000, or 30 days),
+with at most 128 active shares per creator. Tags are immutable; publishing changed
+content requires a new tag. Overwrite and published deletion are not supported.
+
 Keep replica count at **one**, including during replacement (use a recreate
 strategy). Pending OAuth requests and authorization codes are in memory and are
 lost on restart; users can restart sign-in. Storage mutations use a server-local
 lock and assume one server, so a shared volume does not make replicas safe.
 One-off account jobs use SQLite transactions; they are not additional servers.
-Password reset, account disabling and administrative session revocation are
-follow-up CLI work.
+Account administration APIs, including password reset, account disabling, and
+administrative session revocation, are deferred.
 
 ## Verify the deployment
 

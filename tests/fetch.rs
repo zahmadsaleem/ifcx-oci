@@ -144,6 +144,12 @@ impl Fixture {
         Ok(digest(bytes))
     }
 
+    async fn publish_revision(&self) -> Result<String> {
+        let raw = serde_json::to_vec(&self.manifest)?;
+        let digest = self.publish_bytes(&raw, &digest(&raw)).await?;
+        Ok(format!("{}/project/model@{digest}", self.host))
+    }
+
     fn cli(&self, arguments: &[&str]) -> Result<Output> {
         Ok(Command::new(env!("CARGO_BIN_EXE_ifcx-oci"))
             .arg("--plain-http")
@@ -281,7 +287,7 @@ async fn cli_fetches_individual_blobs_and_only_selected_layers() -> Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn selection_errors_and_corruption_leave_no_partial_output() -> Result<()> {
     let mut fixture = Fixture::new().await?;
-    let source = fixture.source();
+    let mut source = fixture.source();
     let output = fixture.temp.path().join("failed");
     let missing = fixture
         .client
@@ -301,7 +307,7 @@ async fn selection_errors_and_corruption_leave_no_partial_output() -> Result<()>
         .manifest
         .layers
         .push(fixture.manifest.layers[0].clone());
-    fixture.publish().await?;
+    source = fixture.publish_revision().await?;
     assert!(fixture
         .client
         .pull_layers(&source, &output, &["geometry/model.glb".into()])
@@ -314,7 +320,7 @@ async fn selection_errors_and_corruption_leave_no_partial_output() -> Result<()>
         fixture.manifest.layers[0]
             .annotations
             .insert("org.opencontainers.image.title".into(), title.into());
-        fixture.publish().await?;
+        source = fixture.publish_revision().await?;
         assert!(fixture
             .client
             .pull_layers(&source, &output, &[title.into()])
@@ -326,7 +332,7 @@ async fn selection_errors_and_corruption_leave_no_partial_output() -> Result<()>
         "org.opencontainers.image.title".into(),
         "geometry/model.glb".into(),
     );
-    fixture.publish().await?;
+    source = fixture.publish_revision().await?;
     fs::write(
         fixture.blob_path(&fixture.manifest.layers[0])?,
         vec![b'x'; GEOMETRY.len()],
@@ -365,12 +371,12 @@ async fn selection_errors_and_corruption_leave_no_partial_output() -> Result<()>
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn cli_inspects_resolves_and_browses_before_downloading_payloads() -> Result<()> {
     let mut fixture = Fixture::new().await?;
-    let source = fixture.source();
+    let source = format!("{}/project/model:inspected", fixture.host);
     let repository = format!("{}/project/model", fixture.host);
     let mut manifest = serde_json::to_value(&fixture.manifest)?;
     manifest["x-test-extension"] = serde_json::json!({"preserve": true});
     let raw = serde_json::to_vec(&manifest)?;
-    let expected = fixture.publish_bytes(&raw, "issued").await?;
+    let expected = fixture.publish_bytes(&raw, "inspected").await?;
     fixture.publish_bytes(&raw, "reviewed").await?;
     for descriptor in std::iter::once(&fixture.manifest.config).chain(&fixture.manifest.layers) {
         fs::remove_file(fixture.blob_path(descriptor)?)?;
@@ -408,7 +414,7 @@ async fn cli_inspects_resolves_and_browses_before_downloading_payloads() -> Resu
     failure(&fixture.cli(&["repo", "ls", &fixture.host])?, "403");
     let output = fixture.cli(&["repo", "tags", &repository])?;
     success(&output);
-    assert_eq!(output.stdout, b"issued\nreviewed\n");
+    assert_eq!(output.stdout, b"inspected\nissued\nreviewed\n");
     let output = fixture.cli(&[
         "repo",
         "tags",

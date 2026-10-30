@@ -47,11 +47,19 @@ enum Command {
         /// Exact callback URL for the registered client; repeat per origin.
         #[arg(long = "oauth-redirect-uri", requires = "oauth_client_id")]
         oauth_redirect_uris: Vec<String>,
+        /// Maximum lifetime of a share, in seconds.
+        #[arg(long, default_value_t = ifcx_oci::auth::DEFAULT_SHARE_MAX_SECONDS)]
+        share_max_age: u64,
     },
-    /// Manage local registry users and exact repository/action grants.
+    /// Manage local registry users and repository policies.
     User {
         #[command(subcommand)]
         command: UserCommand,
+    },
+    /// Manage independent, expiring share credentials in a local registry store.
+    Share {
+        #[command(subcommand)]
+        command: ShareCommand,
     },
     /// Obtain a scoped JWT through the OCI Bearer/token endpoint flow.
     Login {
@@ -178,6 +186,11 @@ enum ListFormat {
 
 #[derive(Subcommand)]
 enum UserCommand {
+    /// Import, inspect, or remove structured allow rules.
+    Grants {
+        #[command(subcommand)]
+        command: GrantCommand,
+    },
     Add {
         #[arg(long)]
         data: PathBuf,
@@ -192,6 +205,66 @@ enum UserCommand {
         data: PathBuf,
         username: String,
         grant: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum GrantCommand {
+    Set {
+        #[arg(long)]
+        data: PathBuf,
+        username: String,
+        /// JSON policy document using the shared API grant shape.
+        file: PathBuf,
+    },
+    List {
+        #[arg(long)]
+        data: PathBuf,
+        username: String,
+    },
+    Remove {
+        #[arg(long)]
+        data: PathBuf,
+        username: String,
+        id: i64,
+    },
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum Binding {
+    Snapshot,
+    Live,
+}
+
+#[derive(Subcommand)]
+enum ShareCommand {
+    /// Resolve a snapshot (default) or explicitly delegate a live policy. TTL is in seconds.
+    Create {
+        #[arg(long)]
+        data: PathBuf,
+        username: String,
+        /// JSON policy document using the shared API grant shape.
+        #[arg(long)]
+        grants: PathBuf,
+        #[arg(long)]
+        ttl: u64,
+        #[arg(long, value_enum, default_value = "snapshot")]
+        binding: Binding,
+        #[arg(long)]
+        public_url: String,
+        #[arg(long, default_value_t = ifcx_oci::auth::DEFAULT_SHARE_MAX_SECONDS)]
+        share_max_age: u64,
+    },
+    List {
+        #[arg(long)]
+        data: PathBuf,
+        username: String,
+    },
+    Revoke {
+        #[arg(long)]
+        data: PathBuf,
+        username: String,
+        id: String,
     },
 }
 
@@ -268,8 +341,13 @@ async fn main() -> Result<()> {
             cors_origins,
             oauth_client_id,
             oauth_redirect_uris,
+            share_max_age,
         } => {
             let registry = Registry::open(data)?;
+            ensure!(share_max_age > 0, "Share maximum age must be positive");
+            registry
+                .share_max_age
+                .store(share_max_age, std::sync::atomic::Ordering::Relaxed);
             if let Some(public_url) = public_url {
                 registry.set_public_url(&public_url)?;
             }
@@ -284,7 +362,70 @@ async fn main() -> Result<()> {
             );
             registry::serve_with_shutdown(listener, registry, shutdown_signal()?).await?;
         }
+        Command::Share { command } => match command {
+            ShareCommand::Create {
+                data,
+                username,
+                grants,
+                ttl,
+                binding,
+                public_url,
+                share_max_age,
+            } => {
+                let registry = Registry::open(data)?;
+                registry.set_public_url(&public_url)?;
+                registry
+                    .share_max_age
+                    .store(share_max_age, std::sync::atomic::Ordering::Relaxed);
+                let policy = ifcx_oci::policy::GrantSet::parse(&fs::read(grants)?)?;
+                let origin = reqwest::Url::parse(&public_url)?;
+                ensure!(
+                    policy.registry == origin.authority(),
+                    "Grant registry does not match the public URL"
+                );
+                let binding = match binding {
+                    Binding::Snapshot => ifcx_oci::auth::ShareBinding::Snapshot,
+                    Binding::Live => ifcx_oci::auth::ShareBinding::Live,
+                };
+                let created = registry
+                    .create_share(&username, &policy, ttl, binding)
+                    .await?;
+                let mut value = serde_json::to_value(&created)?;
+                value["url"] = format!(
+                    "{}/share#secret={}",
+                    public_url.trim_end_matches('/'),
+                    created.secret
+                )
+                .into();
+                print(&value)?;
+            }
+            ShareCommand::List { data, username } => {
+                print(&Registry::open(data)?.auth.list_shares(&username)?)?
+            }
+            ShareCommand::Revoke { data, username, id } => {
+                Registry::open(data)?.auth.revoke_share(&username, &id)?;
+                print(&serde_json::json!({"revoked":true}))?;
+            }
+        },
         Command::User { command } => match command {
+            UserCommand::Grants { command } => match command {
+                GrantCommand::Set {
+                    data,
+                    username,
+                    file,
+                } => {
+                    let policy = ifcx_oci::policy::GrantSet::parse(&fs::read(file)?)?;
+                    Registry::open(data)?.auth.set_grants(&username, &policy)?;
+                    print(&policy)?;
+                }
+                GrantCommand::List { data, username } => {
+                    print(&Registry::open(data)?.auth.list_grants(&username)?)?
+                }
+                GrantCommand::Remove { data, username, id } => {
+                    Registry::open(data)?.auth.remove_grant(&username, id)?;
+                    print(&serde_json::json!({"removed":id}))?;
+                }
+            },
             UserCommand::Add {
                 data,
                 username,

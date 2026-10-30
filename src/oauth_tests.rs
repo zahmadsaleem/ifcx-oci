@@ -68,6 +68,7 @@ async fn code_exchange_binds_client_callback_verifier_expiry_and_is_single_use()
         registry.oauth.inner.lock().unwrap().codes.insert(
             code.clone(),
             Code {
+                permissions: registry.auth.grants("reader")?,
                 request: req.clone(),
                 user: "reader".into(),
                 remember: false,
@@ -206,5 +207,63 @@ async fn login_retry_escapes_input_and_does_not_expand_user_supplied_template_fi
     assert!(!html.contains("<img") && !html.contains("<script>"));
     assert!(html.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
     assert!(html.contains("&quot;&gt;&lt;img src=x onerror=alert(1)&gt;{{request_id}}"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn session_code_preserves_permissions_captured_at_consent() -> Result<()> {
+    let root = tempfile::tempdir()?;
+    let registry = Registry::open(root.path())?;
+    registry.auth.add_user(
+        "reader",
+        "reader-test-password",
+        &["project/model:pull".into()],
+    )?;
+    let approved = registry.auth.grants("reader")?;
+    let mut request = request();
+    request.scope = crate::auth::SESSION_SCOPE.into();
+    let code = random();
+    registry.oauth.inner.lock().unwrap().codes.insert(
+        code.clone(),
+        Code {
+            permissions: approved,
+            request: request.clone(),
+            user: "reader".into(),
+            expires: now() + 60,
+            remember: false,
+        },
+    );
+    registry.auth.grant("reader", "project/model:push")?;
+    registry.auth.grant("reader", "private/model:pull")?;
+    let response = exchange(
+        State(registry.clone()),
+        HeaderMap::new(),
+        Form(Exchange {
+            grant_type: "authorization_code".into(),
+            client_id: request.client_id,
+            redirect_uri: request.redirect_uri,
+            code,
+            code_verifier: "a".repeat(43),
+            refresh_token: None,
+        }),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(response.into_body(), 65536).await?;
+    let reply: serde_json::Value = serde_json::from_slice(&bytes)?;
+    assert_eq!(reply["authorization_type"], "session");
+    let root = registry
+        .auth
+        .validate(reply["access_token"].as_str().unwrap())?;
+    assert!(root.access.iter().all(|a| a.kind == "registry"));
+    let (_, resource) = registry.auth.exchange(
+        &root,
+        &[
+            "repository:project/model:pull,push".into(),
+            "repository:private/model:pull".into(),
+        ],
+    )?;
+    assert_eq!(resource.access[0].actions, vec!["pull"]);
+    assert!(resource.access[1].actions.is_empty());
     Ok(())
 }

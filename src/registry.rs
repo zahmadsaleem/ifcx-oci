@@ -20,15 +20,18 @@ use axum::{
 use base64::Engine;
 use bytes::Bytes;
 use serde_json::{json, Value};
+use sha2::Digest;
 use tokio::{net::TcpListener, sync::Mutex};
 use uuid::Uuid;
 
 use crate::auth::{Auth, PasswordLoginError, TOKEN_SECONDS};
 use crate::release::{digest, digest_hex};
+mod access;
 mod cors;
 mod discovery;
 mod public_url;
 mod publication;
+mod shares;
 
 pub const MANIFEST_TYPE: &str = "application/vnd.oci.image.manifest.v1+json";
 const MAX_BLOB: usize = 512 * 1024 * 1024;
@@ -40,6 +43,7 @@ pub struct Registry {
     public_url: std::sync::RwLock<Option<reqwest::Url>>,
     cors: std::sync::RwLock<Option<tower_http::cors::CorsLayer>>,
     mutation: Mutex<()>,
+    pub share_max_age: std::sync::atomic::AtomicU64,
 }
 
 impl Registry {
@@ -55,13 +59,13 @@ impl Registry {
         if root.join("registry.json").exists() {
             let marker: Value = serde_json::from_slice(&fs::read(root.join("registry.json"))?)?;
             ensure!(
-                marker["format"] == "ifcx-oci-registry/1",
+                marker["format"] == "ifcx-oci-registry/2",
                 "Unknown registry store format"
             );
         } else {
             atomic_write(
                 &root.join("registry.json"),
-                b"{\"format\":\"ifcx-oci-registry/1\"}\n",
+                b"{\"format\":\"ifcx-oci-registry/2\"}\n",
             )?;
         }
         fs::create_dir_all(root.join("blobs/sha256"))?;
@@ -73,13 +77,18 @@ impl Registry {
             public_url: std::sync::RwLock::new(None),
             cors: std::sync::RwLock::new(None),
             mutation: Mutex::new(()),
+            share_max_age: std::sync::atomic::AtomicU64::new(
+                crate::auth::DEFAULT_SHARE_MAX_SECONDS,
+            ),
         }))
     }
     pub fn oauth_authorization_endpoint(&self) -> String {
         format!("{}/oauth/authorize", self.public_origin())
     }
     fn repo(&self, repo: &str) -> PathBuf {
-        self.root.join("repositories").join(repo)
+        self.root
+            .join("repositories")
+            .join(hex::encode(repo.as_bytes()))
     }
     fn blob(&self, value: &str) -> Result<PathBuf> {
         Ok(self.root.join("blobs/sha256").join(digest_hex(value)?))
@@ -100,6 +109,7 @@ pub fn router(registry: Arc<Registry>) -> Router {
         .expect("CORS configuration lock")
         .clone();
     let mut api = Router::new()
+        .merge(shares::router())
         .route("/token", any(token))
         .route("/v2/", any(base))
         .route("/v2", any(base))
@@ -109,6 +119,7 @@ pub fn router(registry: Arc<Registry>) -> Router {
         api = api.layer(cors.clone());
     }
     api.merge(crate::oauth::router_with_cors(cors))
+        .route("/share", get(shares::landing))
         .route("/healthz", get(|| async { StatusCode::OK }))
         .route("/readyz", get(ready))
         .layer(DefaultBodyLimit::max(MAX_BLOB))
@@ -271,6 +282,15 @@ fn authorization(
     Ok(claims)
 }
 
+fn token_reply(token: String, claims: crate::auth::Claims) -> Response {
+    let mut response=Json(json!({"token":token,"access_token":token,"expires_in":claims.exp.saturating_sub(claims.iat),"subject":claims.sub,"access":claims.access})).into_response();
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        "no-store".parse().expect("static header"),
+    );
+    response
+}
+
 async fn token(
     State(registry): State<Arc<Registry>>,
     RawQuery(query): RawQuery,
@@ -295,6 +315,25 @@ async fn token(
             scopes.push(value.into_owned());
         }
     }
+    if let Some(bearer) = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+    {
+        let issued = registry
+            .auth
+            .validate(bearer)
+            .and_then(|root| registry.auth.exchange(&root, &scopes));
+        return match issued {
+            Ok((token, claims)) => Ok(token_reply(token, claims)),
+            Err(_) => Ok(ApiError(
+                StatusCode::UNAUTHORIZED,
+                "UNAUTHORIZED",
+                "Session cannot issue the requested token".into(),
+            )
+            .into_response()),
+        };
+    }
     let credentials = headers
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
@@ -306,12 +345,7 @@ async fn token(
         match registry.password_login(user.into(), password.into()).await {
             Ok(()) => {
                 let (token, claims) = registry.auth.issue(user, &scopes, TOKEN_SECONDS)?;
-                let mut reply = Json(json!({"token":token,"access_token":token,"expires_in":TOKEN_SECONDS,"subject":claims.sub,"access":claims.access})).into_response();
-                reply.headers_mut().insert(
-                    header::CACHE_CONTROL,
-                    "no-store".parse().expect("static header"),
-                );
-                return Ok(reply);
+                return Ok(token_reply(token, claims));
             }
             Err(PasswordLoginError::Throttled(seconds)) => return Ok(login_throttled(seconds)),
             Err(PasswordLoginError::Unavailable) => {
@@ -421,43 +455,73 @@ async fn endpoint(
     headers: HeaderMap,
     body: Bytes,
 ) -> std::result::Result<Response, ApiError> {
-    let repo = path
-        .rsplit_once("/blobs/")
-        .or_else(|| path.rsplit_once("/manifests/"))
-        .map(|(repo, _)| repo)
-        .or_else(|| path.strip_suffix("/tags/list"))
+    // Repository components may themselves be named blobs, manifests, or tags.
+    // Resolve the last resource delimiter once and use it for both auth and dispatch.
+    let mut routes: Vec<_> = ["/blobs/", "/manifests/"]
+        .into_iter()
+        .filter_map(|marker| path.rfind(marker).map(|at| (at, marker)))
+        .collect();
+    if path.ends_with("/tags/list") {
+        routes.push((path.len() - 10, "/tags/list"));
+    }
+    let (at, marker) = routes
+        .into_iter()
+        .max_by_key(|(at, _)| *at)
         .ok_or_else(|| ApiError::missing("NAME_UNKNOWN"))?;
+    let repo = &path[..at];
     valid_repo(repo)?;
-    let action = if method == Method::GET || method == Method::HEAD {
+    let reference = &path[at + marker.len()..];
+    let upload_path = marker == "/blobs/" && reference.starts_with("uploads/");
+    let action = if !upload_path && (method == Method::GET || method == Method::HEAD) {
         "pull"
     } else {
         "push"
     };
     let claims = match authorization(&registry, &headers, Some((repo, action))) {
         Ok(claims) => claims,
-        Err(response) => return Ok(*response),
+        Err(response) => {
+            // A write-only client may probe for deduplication without learning
+            // whether an unreadable blob already exists.
+            if method == Method::HEAD && path.contains("/blobs/") && !upload_path {
+                if let Ok(claims) = authorization(&registry, &headers, Some((repo, "push"))) {
+                    if registry.auth.permits(&claims, repo, "push")? {
+                        return Err(ApiError::missing("BLOB_UNKNOWN"));
+                    }
+                }
+            }
+            return Ok(*response);
+        }
     };
-    if let Some(repo) = path.strip_suffix("/blobs/uploads/") {
+    if upload_path && reference == "uploads/" {
         valid_repo(repo)?;
         if method == Method::POST {
             let _guard = registry.mutation.lock().await;
             let id = Uuid::new_v4().to_string();
             let upload = registry.upload(repo, &id)?;
+            atomic_write(
+                &upload.with_extension("owner"),
+                Registry::upload_owner(&claims).as_bytes(),
+            )?;
             atomic_write(&upload, &body)?;
             if let Some(value) = query.get("digest") {
                 return finish_upload(&registry, repo, &id, value);
             }
             return Ok(upload_response(repo, &id, body.len() as u64));
         }
-    } else if let Some((repo, id)) = path.rsplit_once("/blobs/uploads/") {
+    } else if upload_path {
+        let id = reference.strip_prefix("uploads/").expect("upload route");
         valid_repo(repo)?;
         let _guard = registry.mutation.lock().await;
         let upload = registry.upload(repo, id)?;
+        if !registry.check_upload_owner(repo, id, &claims)? {
+            return Ok(challenge(&registry, Some((repo, "push")), true));
+        }
         if !upload.is_file() {
             return Err(ApiError::missing("BLOB_UPLOAD_UNKNOWN"));
         }
         let length = upload.metadata()?.len();
         if method == Method::DELETE {
+            fs::remove_file(upload.with_extension("owner"))?;
             fs::remove_file(upload)?;
             return Ok(response(StatusCode::NO_CONTENT, Body::empty(), &[]));
         }
@@ -502,10 +566,17 @@ async fn endpoint(
             }
             return Ok(upload_response(repo, id, length + body.len() as u64));
         }
-    } else if let Some((repo, value)) = path.rsplit_once("/blobs/") {
+    } else if marker == "/blobs/" {
+        let value = reference;
         valid_repo(repo)?;
         digest_hex(value)?;
         if method == Method::GET || method == Method::HEAD {
+            if !registry.can_blob(&claims, repo, value)? {
+                if method == Method::HEAD && registry.auth.permits(&claims, repo, "push")? {
+                    return Err(ApiError::missing("BLOB_UNKNOWN"));
+                }
+                return Ok(challenge(&registry, Some((repo, "pull")), true));
+            }
             let file = registry.blob(value)?;
             if !registry.membership(repo, value)?.is_file() || !file.is_file() {
                 return Err(ApiError::missing("BLOB_UNKNOWN"));
@@ -526,10 +597,25 @@ async fn endpoint(
                 ],
             ));
         }
-    } else if let Some((repo, reference)) = path.rsplit_once("/manifests/") {
+    } else if marker == "/manifests/" {
         valid_repo(repo)?;
         let _guard = registry.mutation.lock().await;
+        if reference.starts_with("sha256:") {
+            digest_hex(reference)?;
+        } else {
+            valid_tag(reference)?;
+        }
+        if !registry.can_manifest(&claims, repo, reference, action)? {
+            return Ok(challenge(&registry, Some((repo, action)), true));
+        }
         if method == Method::PUT {
+            if body.len() > 1024 * 1024 {
+                return Err(ApiError(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "SIZE_INVALID",
+                    "Manifest exceeds 1 MiB".into(),
+                ));
+            }
             let manifest: Value = serde_json::from_slice(&body).map_err(ApiError::bad)?;
             if manifest["schemaVersion"] != 2 || manifest["mediaType"] != MANIFEST_TYPE {
                 return Err(ApiError(
@@ -537,6 +623,49 @@ async fn endpoint(
                     "MANIFEST_INVALID",
                     "This server accepts OCI image manifests, including non-executable artifacts"
                         .into(),
+                ));
+            }
+            let value = digest(&body);
+            if reference.starts_with("sha256:") {
+                if reference != value {
+                    return Err(ApiError::bad("Manifest digest mismatch"));
+                }
+            } else {
+                valid_tag(reference)?;
+            }
+            let manifest_path = registry
+                .repo(repo)
+                .join("manifests")
+                .join(digest_hex(&value)?);
+            let tag_path = registry.repo(repo).join("tags").join(reference);
+            if !reference.starts_with("sha256:") && tag_path.exists() {
+                if fs::read_to_string(&tag_path)? != value {
+                    return Err(ApiError(
+                        StatusCode::CONFLICT,
+                        "DENIED",
+                        "Tags are immutable; publish a new version name".into(),
+                    ));
+                }
+                return Ok(response(
+                    StatusCode::CREATED,
+                    Body::empty(),
+                    &[
+                        ("location", format!("/v2/{repo}/manifests/{value}")),
+                        ("docker-content-digest", value),
+                    ],
+                ));
+            }
+            if reference.starts_with("sha256:") && manifest_path.exists() {
+                if fs::read(&manifest_path)? != body {
+                    return Err(ApiError::bad("Stored manifest integrity failure"));
+                }
+                return Ok(response(
+                    StatusCode::CREATED,
+                    Body::empty(),
+                    &[
+                        ("location", format!("/v2/{repo}/manifests/{value}")),
+                        ("docker-content-digest", value),
+                    ],
                 ));
             }
             let config = manifest
@@ -553,7 +682,9 @@ async fn endpoint(
                     .as_u64()
                     .context("Missing descriptor size")?;
                 let file = registry.blob(value)?;
-                if !registry.membership(repo, value)?.is_file()
+                if (!registry.can_blob(&claims, repo, value)?
+                    && !registry.uploaded_by(&claims, repo, value)?)
+                    || !registry.membership(repo, value)?.is_file()
                     || !file.is_file()
                     || file.metadata()?.len() != size
                 {
@@ -564,14 +695,6 @@ async fn endpoint(
                     ));
                 }
             }
-            let value = digest(&body);
-            if reference.starts_with("sha256:") {
-                if reference != value {
-                    return Err(ApiError::bad("Manifest digest mismatch"));
-                }
-            } else {
-                valid_tag(reference)?;
-            }
             atomic_write(
                 &registry
                     .repo(repo)
@@ -579,7 +702,7 @@ async fn endpoint(
                     .join(digest_hex(&value)?),
                 &body,
             )?;
-            publication::record(&registry, repo, reference, &value, &claims.sub)?;
+            publication::record(&registry, repo, reference, &value, &claims)?;
             if !reference.starts_with("sha256:") {
                 atomic_write(
                     &registry.repo(repo).join("tags").join(reference),
@@ -625,10 +748,16 @@ async fn endpoint(
             ]);
             return Ok(response(StatusCode::OK, bytes, &metadata));
         }
-    } else if let Some(repo) = path.strip_suffix("/tags/list") {
+    } else if marker == "/tags/list" {
         valid_repo(repo)?;
         if method == Method::GET {
             let folder = registry.repo(repo).join("tags");
+            let layers = registry.auth.limits(&claims)?;
+            let visible: std::collections::HashSet<_> = registry
+                .visible_roots(&layers, repo)?
+                .into_iter()
+                .filter_map(|(tag, _)| tag)
+                .collect();
             let mut tags = if folder.exists() {
                 fs::read_dir(folder)?
                     .filter_map(|v| v.ok().map(|e| e.file_name().to_string_lossy().into_owned()))
@@ -636,6 +765,7 @@ async fn endpoint(
             } else {
                 Vec::new()
             };
+            tags.retain(|tag| visible.contains(tag));
             tags.sort();
             return Ok(Json(json!({"name":repo,"tags":tags})).into_response());
         }
@@ -686,6 +816,16 @@ fn finish_upload(
         atomic_write(&path, &bytes)?;
     }
     atomic_write(&registry.membership(repo, value)?, b"")?;
+    let owner = fs::read_to_string(upload.with_extension("owner"))?;
+    atomic_write(
+        &registry
+            .repo(repo)
+            .join("staged")
+            .join(digest_hex(value)?)
+            .join(hex::encode(sha2::Sha256::digest(owner.as_bytes()))),
+        b"",
+    )?;
+    fs::remove_file(upload.with_extension("owner"))?;
     fs::remove_file(upload)?;
     Ok(response(
         StatusCode::CREATED,

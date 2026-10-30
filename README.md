@@ -107,9 +107,10 @@ ifcx-oci --plain-http pull 127.0.0.1:5000/project/model@DIGEST \
   --output build/received
 ```
 
-The friendly label `issued` can point to a newer release later. The digest keeps
-your reference tied to the exact content you chose. Receiving a release also
-checks its files. Both conversion and receiving require a new output folder.
+The label `issued` permanently names this release. Publish changed content under
+a new version name. The digest identifies the exact content you chose. Receiving
+a release also checks its files. Both conversion and receiving require a new
+output folder.
 
 To create a user who can only receive releases:
 
@@ -127,6 +128,9 @@ ifcx-oci --plain-http login 127.0.0.1:5000 \
 CLI tokens expire after 15 minutes and do not renew automatically; run `login`
 again when needed. Use `ifcx-oci copy SOURCE DESTINATION` to copy a release to
 another registry after signing in to both.
+
+For JSON policies spanning repositories or tags, browser approval and token
+exchange, and expiring shares, see [authorization and sharing](AUTHORIZATION.md).
 
 ## Try a shared registry
 

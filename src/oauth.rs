@@ -63,6 +63,7 @@ struct Pending {
 }
 
 struct Code {
+    permissions: Vec<crate::policy::Grant>,
     request: Authorization,
     user: String,
     expires: u64,
@@ -186,7 +187,7 @@ async fn config(State(registry): State<std::sync::Arc<Registry>>) -> Response {
     let endpoint = registry.oauth_authorization_endpoint();
     hardened(Json(
         json!({"client_id":store.client_id,"authorization_endpoint":endpoint,
-        "token_endpoint":"/oauth/token","redirect_uris":store.redirects,
+        "token_endpoint":"/oauth/token","session_scope":crate::auth::SESSION_SCOPE,"scoped_token_endpoint":"/token","redirect_uris":store.redirects,
         "refresh_cookie_name":session::COOKIE,"revocation_endpoint":"/oauth/revoke",
         "session_max_age":crate::auth::SESSION_SECONDS,"remembered_session_max_age":crate::auth::REMEMBER_SECONDS,
         "code_challenge_methods_supported":["S256"]}),
@@ -195,8 +196,14 @@ async fn config(State(registry): State<std::sync::Arc<Registry>>) -> Response {
 
 fn scopes(value: &str) -> Result<Vec<String>> {
     let scopes: Vec<_> = value.split_whitespace().map(str::to_string).collect();
+    if scopes == [crate::auth::SESSION_SCOPE] {
+        return Ok(scopes);
+    }
     for scope in &scopes {
-        if scope == "registry:catalog:read" {
+        if matches!(
+            scope.as_str(),
+            "registry:catalog:read" | "registry:catalog:*" | crate::auth::CATALOG_GRANTS_SCOPE
+        ) {
             continue;
         }
         let grant = scope
@@ -328,11 +335,16 @@ async fn consent(
             .query_pairs_mut()
             .append_pair("error", "access_denied");
     } else {
+        let permissions = match registry.auth.grants(&input.username) {
+            Ok(p) => p,
+            Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "server_error"),
+        };
         let code = random();
         redirect.query_pairs_mut().append_pair("code", &code);
         store.codes.insert(
             code,
             Code {
+                permissions,
                 request: pending.request,
                 user: input.username,
                 expires: now() + CODE_SECONDS,
