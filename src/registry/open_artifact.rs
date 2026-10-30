@@ -91,8 +91,7 @@ impl Launch {
     pub(crate) fn access_description(&self) -> String {
         let minutes = self.artifact.expires_at.saturating_sub(now()).div_ceil(60);
         match &self.artifact.publish {
-            Some(target) => format!("View this version from {} and add new versions in {} with names matching {}. Access lasts up to {minutes} minutes.",
-                self.artifact.source.repository, target.repository, target.allowed_tags.join(", ")),
+            Some(target) => format!("Open this version and save new versions in {}. Access lasts up to {minutes} minutes.", target.repository),
             None => format!("View this version from {} for up to {minutes} minutes.", self.artifact.source.repository),
         }
     }
@@ -141,6 +140,7 @@ pub(super) fn router() -> Router<Arc<Registry>> {
         .route("/open-artifact/launches", post(create))
         .route("/open-artifact/client.js", get(client))
         .route("/open-artifact/controls.js", get(controls))
+        .route("/open-artifact/controls.css", get(controls_style))
         .layer(DefaultBodyLimit::max(32 * 1024))
         .layer(middleware::map_response(hardened))
 }
@@ -156,6 +156,13 @@ async fn controls() -> impl IntoResponse {
     (
         [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
         include_str!("open_artifact_ui.js"),
+    )
+}
+
+async fn controls_style() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
+        include_str!("open_artifact_ui.css"),
     )
 }
 
@@ -228,6 +235,56 @@ impl Registry {
             .find(|app| app.id == id)
             .cloned()
             .context("Unknown external application")
+    }
+
+    fn publication_access(&self, claims: &Claims, repository: &str) -> Result<Option<Publish>> {
+        let limits = if claims.share_id.is_some() {
+            self.auth.limits(claims)?
+        } else {
+            vec![self.auth.grants(&claims.sub)?]
+        };
+        let mut candidates = vec!["*".to_string()];
+        for rules in &limits {
+            for grant in rules
+                .iter()
+                .filter(|grant| grant.repository(repository, "push"))
+            {
+                if let Some(tags) = &grant.tags {
+                    candidates.extend(tags.iter().cloned());
+                }
+            }
+        }
+        candidates.sort();
+        candidates.dedup();
+        let mut allowed_tags: Vec<_> = candidates
+            .into_iter()
+            .filter(|tag| {
+                if !tag.contains('*') && self.repo(repository).join("tags").join(tag).exists() {
+                    return false;
+                }
+                let requested = Grant {
+                    repositories: vec![repository.into()],
+                    tags: Some(vec![tag.clone()]),
+                    actions: vec!["push".into()],
+                    digests: None,
+                };
+                limits
+                    .iter()
+                    .all(|rules| policy::delegates(rules, std::slice::from_ref(&requested)))
+            })
+            .take(32)
+            .collect();
+        if allowed_tags.first().is_some_and(|tag| tag == "*") {
+            allowed_tags.truncate(1);
+        }
+        if allowed_tags.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(Publish {
+                repository: repository.into(),
+                allowed_tags,
+            }))
+        }
     }
 
     pub(crate) fn pending_launch(&self, id: &str, client: &str) -> Result<Launch> {
@@ -339,11 +396,41 @@ async fn discover(
     };
     let (digest, manifest) =
         registry.source_manifest(&claims, &query.repository, &query.reference)?;
+    let publication = registry.publication_access(&claims, &query.repository)?;
     let config = registry.applications.read().map_err(ApiError::bad)?;
     let profile = config.profile(&manifest);
-    let apps: Vec<_> = profile.into_iter().flat_map(|profile| config.applications.iter().filter_map(move |app|
-        app.supports.iter().find(|support| support.profile == profile.id).map(|support|
-            json!({"id":app.id,"name":app.name,"intents":support.intents,"publish":support.publish})))).collect();
+    let mut apps = Vec::new();
+    if let Some(profile) = profile {
+        for app in &config.applications {
+            let Some(support) = app
+                .supports
+                .iter()
+                .find(|support| support.profile == profile.id)
+            else {
+                continue;
+            };
+            let mut launches = serde_json::Map::new();
+            if support.intents.contains(&Intent::View) {
+                launches.insert(
+                    "view".into(),
+                    json!({"intent":"view","ttl":crate::auth::TOKEN_SECONDS}),
+                );
+            }
+            if support.intents.contains(&Intent::Edit)
+                && (!support.publish || publication.is_some())
+            {
+                let mut launch = json!({"intent":"edit","ttl":crate::auth::TOKEN_SECONDS});
+                if support.publish {
+                    launch["publish"] =
+                        serde_json::to_value(&publication).map_err(ApiError::bad)?;
+                }
+                launches.insert("edit".into(), launch);
+            }
+            if !launches.is_empty() {
+                apps.push(json!({"id":app.id,"name":app.name,"intents":support.intents,"publish":support.publish,"launches":launches}));
+            }
+        }
+    }
     Ok(Json(json!({"protocol":PROTOCOL,"profile":profile.map(|p| &p.id),"digest":digest,"applications":apps})).into_response())
 }
 

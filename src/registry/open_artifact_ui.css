@@ -1,0 +1,8 @@
+.application-controls { margin: 16px 0; }
+.application-controls > button + button { margin-left: 8px; }
+.application-controls > p:empty { display: none; }
+.application-controls > p { margin: 6px 0 0; font: 12px/1.5 system-ui; }
+.application-menu { position: fixed; inset: auto; box-sizing: border-box; min-width: 160px; max-width: calc(100vw - 16px); margin: 0; padding: 4px; border: 1px solid #dce2d7; border-radius: 6px; background: #fff; color: #182921; box-shadow: 0 3px 12px #18292126; }
+.application-menu button { display: block; width: 100%; margin: 0; padding: 6px 12px; border: 0; border-radius: 3px; background: transparent; color: inherit; font: 13px/1.5 system-ui; text-align: left; cursor: pointer; }
+.application-menu button:hover, .application-menu button:focus-visible { outline: none; background: #edf1e8; }
+.application-menu button:disabled { opacity: .5; cursor: default; }

@@ -169,6 +169,13 @@ account and share policies determine access. The
 [development guide](DEVELOPMENT.md#register-applications-that-open-files)
 describes operator configuration and the `open-artifact/1` contract.
 
+Choose **Open with…** to view files or **Edit with…** to edit them, then select
+an application. A single compatible application opens directly. The launcher
+uses a fifteen-minute lifetime and derives save access in the source folder
+from the account or share policy. The receiving application owns Save As,
+destination choices, and version names; the registry checks each publication
+against the granted permissions.
+
 A launch pins the selected source manifest by digest. Viewing grants access to
 that manifest and its described files. Editing can also request permission to
 publish new versions to a chosen repository and tag pattern. Source reads and

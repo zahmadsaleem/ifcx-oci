@@ -443,6 +443,96 @@ async fn account_launch_pins_source_and_publishes_only_new_allowed_versions() ->
 }
 
 #[tokio::test]
+async fn chooser_defaults_keep_intent_separate_and_let_the_app_choose_version_names() -> Result<()>
+{
+    let fixture = Fixture::new().await?;
+    fixture.model("issued", "model").await?;
+    let owner = fixture.root("owner")?;
+    let path = format!("/open-artifact/applications?repository={REPO}&reference=issued");
+    let discovery: Value = fixture.get(&path, &owner).await?.json().await?;
+    let editor = &discovery["applications"][0];
+    assert_eq!(
+        editor["launches"]["view"],
+        json!({"intent":"view","ttl":900})
+    );
+    assert_eq!(
+        editor["launches"]["edit"]["publish"],
+        json!({"repository":REPO,"allowed_tags":["*"]})
+    );
+    let mut request = editor["launches"]["edit"].clone();
+    request["application_id"] = json!(CLIENT);
+    request["repository"] = json!(REPO);
+    request["reference"] = discovery["digest"].clone();
+    let launched: Value = fixture.create(&owner, &request).await?.json().await?;
+    let code = fixture.approve(&launched, "", "owner").await?;
+    let session: Value = fixture
+        .exchange(&code, CLIENT, VERIFIER)
+        .await?
+        .json()
+        .await?;
+    let token = fixture
+        .scoped(session["access_token"].as_str().unwrap())
+        .await?;
+    fixture
+        .publish(
+            &token,
+            "chosen-in-the-editor",
+            "edited",
+            "application/vnd.example.model.v1",
+        )
+        .await?;
+
+    let reader = fixture.root("reader")?;
+    let discovery: Value = fixture.get(&path, &reader).await?.json().await?;
+    assert!(discovery["applications"][0]["launches"]["edit"].is_null());
+    assert_eq!(
+        discovery["applications"][0]["launches"]["view"]["intent"],
+        "view"
+    );
+
+    let policy = GrantSet {
+        version: 1,
+        registry: Url::parse(&fixture.origin)?.authority().into(),
+        grants: vec![
+            Grant {
+                repositories: vec![REPO.into()],
+                tags: Some(vec!["issued".into()]),
+                actions: vec!["pull".into()],
+                digests: None,
+            },
+            Grant {
+                repositories: vec![REPO.into()],
+                tags: Some(vec!["review-*".into()]),
+                actions: vec!["push".into()],
+                digests: None,
+            },
+        ],
+    };
+    fixture.registry.auth.set_grants("owner", &policy)?;
+    let discovery: Value = fixture.get(&path, &owner).await?.json().await?;
+    assert_eq!(
+        discovery["applications"][0]["launches"]["edit"]["publish"]["allowed_tags"],
+        json!(["review-*"])
+    );
+    let share = fixture
+        .registry
+        .create_share(
+            "owner",
+            &GrantSet {
+                grants: vec![policy.grants[0].clone()],
+                ..policy
+            },
+            600,
+            subsoil::auth::ShareBinding::Snapshot,
+        )
+        .await?;
+    let (root, _, _) = fixture.registry.auth.redeem_share(&share.secret)?;
+    let discovery: Value = fixture.get(&path, &root).await?.json().await?;
+    assert!(discovery["applications"][0]["launches"]["edit"].is_null());
+    Ok(())
+}
+
+#[tokio::test]
 async fn profile_discovery_multi_client_config_and_rejected_launches() -> Result<()> {
     let fixture = Fixture::new().await?;
     fixture.model("issued", "model").await?;

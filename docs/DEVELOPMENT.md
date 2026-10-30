@@ -163,6 +163,13 @@ optional `publish`; both endpoints require an account or share session root in
 the Authorization header. Registry-owned share interfaces preserve the launch
 response's browser cookie using `credentials: 'same-origin'`.
 
+Each discovery result includes `launches.view` and, when permitted,
+`launches.edit`. These contain suggested `intent`, `ttl`, and optional `publish`
+values for the selected action. The registry's chooser sends those values
+without asking for save settings. A publication allowance describes permitted
+destinations and tag patterns; the receiving application chooses the version
+name when saving.
+
 Pending launch requests expire within five minutes and are kept in memory.
 Approved sessions persist in the identity store, retain their absolute deadline,
 and renew through the existing token endpoint. See the

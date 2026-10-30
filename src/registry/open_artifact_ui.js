@@ -1,5 +1,5 @@
 'use strict';
-// Shared controls for the registry's file browser and expiring share page.
+// View/edit is selected before choosing an application. Saving belongs to that application.
 window.SubsoilOpenArtifactUI = async (container, credential, repository, reference, current = () => true) => {
   container.classList.add('application-controls');
   container.hidden = true;
@@ -10,72 +10,85 @@ window.SubsoilOpenArtifactUI = async (container, credential, repository, referen
   if (!response.ok) throw Error('Couldn’t find an application for these files. Please try again.');
   const data = await response.json();
   if (!current() || !data.applications.length) return;
-  const heading = document.createElement('h3');
-  heading.textContent = 'Open with…';
-  const form = document.createElement('form'), select = document.createElement('select');
-  select.setAttribute('aria-label', 'Application and access');
-  const choices = [];
-  for (const app of data.applications) {
-    for (const intent of app.intents) {
-      const choice = { app, intent }, option = document.createElement('option');
-      option.value = String(choices.length);
-      option.textContent = app.name + (intent === 'view' ? ' · View' : app.publish ? ' · Edit and save a new version' : ' · Edit');
-      choices.push(choice);
-      select.append(option);
-    }
-  }
-  function field(text, value, type = 'text') {
-    const label = document.createElement('label'), input = document.createElement('input');
-    label.append(document.createTextNode(text + ' '), input);
-    input.type = type;
-    input.value = value;
-    input.required = true;
-    return { label, input };
-  }
-  const destination = document.createElement('fieldset'), legend = document.createElement('legend');
-  legend.textContent = 'Save new versions';
-  const folder = field('Folder', repository), names = field('Version names', 'review-*');
-  destination.append(legend, folder.label, names.label);
-  const duration = field('Access in minutes', '15', 'number');
-  duration.input.min = '1';
-  duration.input.max = '480';
-  const note = document.createElement('p');
-  note.textContent = 'You’ll approve the application’s access before it opens. Changed files are saved as new versions.';
-  const message = document.createElement('p');
+  const menu = document.createElement('div'), message = document.createElement('p');
+  menu.className = 'application-menu';
+  menu.setAttribute('popover', 'auto');
+  menu.setAttribute('role', 'menu');
   message.setAttribute('role', 'status');
-  const button = document.createElement('button');
-  button.type = 'submit';
-  button.textContent = 'Open';
-  function update() {
-    const choice = choices[Number(select.value)];
-    destination.hidden = destination.disabled = choice.intent !== 'edit' || !choice.app.publish;
+  container.append(menu, message);
+  let attempt = 0, activeTrigger;
+  const triggers = [];
+  function busy(value) {
+    for (const button of [...triggers, ...menu.querySelectorAll('button')]) button.disabled = value;
   }
-  select.onchange = update;
-  update();
-  form.append(select, destination, duration.label, note, button, message);
-  form.onsubmit = async event => {
-    event.preventDefault();
-    if (!current()) return;
-    button.disabled = true;
-    message.textContent = 'Opening application…';
+  async function launch(app, intent) {
+    const ticket = ++attempt;
+    busy(true);
+    message.textContent = 'Opening…';
     try {
-      const choice = choices[Number(select.value)];
-      const request = { application_id: choice.app.id, repository, reference: data.digest,
-        intent: choice.intent, ttl: Number(duration.input.value) * 60 };
-      if (!destination.disabled) request.publish = { repository: folder.input.value.trim(), allowed_tags: [names.input.value.trim()] };
       const launched = await fetch('/open-artifact/launches', { method: 'POST',
         headers: { Authorization: 'Bearer ' + await credential(), 'Content-Type': 'application/json' },
-        body: JSON.stringify(request), credentials: 'same-origin', cache: 'no-store' });
-      if (!launched.ok) throw Error('This application could not be opened with the requested access. Check the folder and version names, or ask your project team for help.');
-      const launch = await launched.json();
-      if (current()) location.assign(launch.launch_url);
+        body: JSON.stringify({ ...app.launches[intent], application_id: app.id, repository, reference: data.digest }),
+        credentials: 'same-origin', cache: 'no-store' });
+      if (!launched.ok) throw Error('Couldn’t open this app. Please try again.');
+      const result = await launched.json();
+      if (current() && ticket === attempt) location.assign(result.launch_url);
     } catch (error) {
-      if (current()) {
-        message.textContent = error instanceof TypeError ? 'Couldn’t connect. Check your connection and try again.' : error.message;
-        button.disabled = false;
-      }
+      if (current() && ticket === attempt) message.textContent = error instanceof TypeError
+        ? 'Couldn’t connect. Check your connection and try again.' : error.message;
+    } finally {
+      if (ticket === attempt) busy(false);
     }
+  }
+  for (const intent of ['view', 'edit']) {
+    const apps = data.applications.filter(app => app.launches[intent]);
+    if (!apps.length) continue;
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.textContent = intent === 'view' ? 'Open with…' : 'Edit with…';
+    if (apps.length > 1) {
+      trigger.setAttribute('aria-haspopup', 'menu');
+      trigger.setAttribute('aria-expanded', 'false');
+    }
+    trigger.onclick = () => {
+      if (!current()) return;
+      message.textContent = '';
+      if (apps.length === 1) { launch(apps[0], intent); return; }
+      if (menu.matches(':popover-open')) { menu.hidePopover(); return; }
+      activeTrigger = trigger;
+      menu.setAttribute('aria-label', intent === 'view' ? 'Open with' : 'Edit with');
+      menu.replaceChildren(...apps.map(app => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.setAttribute('role', 'menuitem');
+        button.textContent = app.name;
+        button.onclick = () => { menu.hidePopover(); launch(app, intent); };
+        return button;
+      }));
+      menu.showPopover();
+      const anchor = trigger.getBoundingClientRect(), bounds = menu.getBoundingClientRect();
+      menu.style.left = Math.max(8, Math.min(anchor.left, innerWidth - bounds.width - 8)) + 'px';
+      menu.style.top = (anchor.bottom + 4 + bounds.height <= innerHeight - 8
+        ? anchor.bottom + 4 : Math.max(8, anchor.top - bounds.height - 4)) + 'px';
+      trigger.setAttribute('aria-expanded', 'true');
+      menu.querySelector('button').focus();
+    };
+    triggers.push(trigger);
+    container.insertBefore(trigger, menu);
+  }
+  menu.ontoggle = event => {
+    if (event.newState === 'closed' && activeTrigger) activeTrigger.setAttribute('aria-expanded', 'false');
   };
-  container.append(heading, form);
+  menu.onkeydown = event => {
+    const items = [...menu.querySelectorAll('button')], index = items.indexOf(document.activeElement);
+    if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+      event.preventDefault();
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+        : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+      items[next].focus();
+    } else if (event.key === 'Escape') {
+      event.preventDefault(); menu.hidePopover(); activeTrigger.focus();
+    } else if (event.key === 'Tab') { menu.hidePopover(); activeTrigger.focus(); }
+  };
   container.hidden = false;
 };
