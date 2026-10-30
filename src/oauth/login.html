@@ -81,22 +81,24 @@
       <div class="assurance"><span class="dot" aria-hidden="true"></span>Your password stays with Subsoil.</div>
     </section>
     <section class="panel" aria-labelledby="sign-in-title">
-      <h2 id="sign-in-title">Sign in</h2>
+      <h2 id="sign-in-title">{{heading}}</h2>
       <p class="subtitle">Continue to <strong>{{client}}</strong></p>
       <div class="access">
         <span class="check" aria-hidden="true">✓</span>
-        <div><p>{{access}}</p><small>Your account decides which files you can use.</small></div>
+        <div><p>{{access}}</p><small>{{access_note}}</small></div>
       </div>
       <p class="error" id="signin-error" role="alert">{{error}}</p>
       <form method="post" action="/oauth/authorize">
         <input type="hidden" name="request_id" value="{{request_id}}">
+        <fieldset {{credentials_hidden}} {{credentials_disabled}} style="border:0;padding:0;margin:0">
         <label for="username">Username</label>
         <input id="username" name="username" value="{{username}}" autocomplete="username" required maxlength="64" autocapitalize="none" spellcheck="false" aria-describedby="signin-error">
         <label for="password">Password</label>
         <input id="password" name="password" type="password" autocomplete="current-password" required aria-describedby="signin-error">
+        </fieldset>
         <label class="remember" {{remember_hidden}}><input type="checkbox" name="remember_me" value="true" {{remember_checked}} {{remember_disabled}}>Remember me for 30 days</label>
         <div class="actions">
-          <button class="primary" name="decision" value="allow"><span>Sign in &amp; continue</span><span class="arrow" aria-hidden="true">→</span></button>
+          <button class="primary" name="decision" value="allow"><span>{{continue_label}}</span><span class="arrow" aria-hidden="true">→</span></button>
           <button class="secondary" name="decision" value="deny" formnovalidate>Cancel</button>
         </div>
       </form>

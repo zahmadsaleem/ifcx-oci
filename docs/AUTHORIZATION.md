@@ -161,6 +161,43 @@ parameter filters names by a case-insensitive substring before paging. Listing
 and search results include only authorized content. Tag requests without `n`
 retain the unpaged response.
 
+## Opening files in external applications
+
+Registered applications appear under **Open with…** when they support the
+selected version's profile. Profile registration determines compatibility;
+account and share policies determine access. The
+[development guide](DEVELOPMENT.md#register-applications-that-open-files)
+describes operator configuration and the `open-artifact/1` contract.
+
+A launch pins the selected source manifest by digest. Viewing grants access to
+that manifest and its described files. Editing can also request permission to
+publish new versions to a chosen repository and tag pattern. Source reads and
+destination writes are separate rules: publication permission leaves other
+versions unreadable and preserves tag immutability. Opening a published result
+uses another authorized launch or an ordinary application connection.
+
+Account holders sign in and explicitly approve the limited application access.
+The read-only file browser can prepare an edit request; the fresh approval checks
+the account's current publication permissions. Share recipients approve on the
+registry's page using browser proof established when they selected the
+application. This requires the redeemed share root and stays within all of its
+existing permissions. A snapshot share opens its selected content for viewing;
+publishing requires a live share that already permits the destination.
+
+The application receives a request ID in its launch URL and starts Authorization
+Code with PKCE S256. The request ID alone grants no access. The single-use code
+is bound to the application, exact callback, and PKCE challenge. Access and
+refresh tokens arrive through the token response and stay in application memory.
+Launch sessions use rotating refresh tokens without remembered-login cookies.
+
+The chosen lifetime is between one second and eight hours, bounded further by
+the originating session or share's absolute deadline. Refresh preserves that
+deadline and the original permission ceiling. Removing account permissions or
+revoking a share affects issued launch tokens too. Signing out of the launched
+application revokes its own session through `/oauth/revoke`. Each registered
+application also has a separate remembered-login cookie for ordinary account
+connections; `/oauth/config?client_id=<id>` advertises its cookie name.
+
 ## Expiring shares
 
 A share delegates a subset of an approved account policy to anyone holding its

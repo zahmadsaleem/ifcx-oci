@@ -69,6 +69,12 @@ details { margin-top: 24px; }
 summary { cursor: pointer; font-size: 12px; color: #52644f; }
 pre { overflow: auto; max-height: 420px; padding: 16px; background: #f5f7f3; border-radius: 6px; }
 footer { padding: 24px 0; color: #8b958a; font-size: 11px; }
+.application-controls form { display: grid; gap: 12px; max-width: 560px; margin-bottom: 24px; }
+.application-controls select { font: inherit; padding: 8px; border: 1px solid #d4ddcf; border-radius: 6px; background: #fff; width: 100%; }
+.application-controls fieldset { display: grid; gap: 10px; border: 1px solid #dce2d7; border-radius: 6px; }
+.application-controls label { display: grid; gap: 4px; font-size: 12px; }
+.application-controls p { margin: 0; font-size: 12px; }
+.application-controls button { justify-self: start; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 @media (max-width: 700px) {
   body { padding: 0 16px; }

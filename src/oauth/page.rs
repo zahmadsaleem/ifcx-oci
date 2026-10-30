@@ -50,11 +50,49 @@ pub(super) fn form(
     } else {
         access
     };
+    let launch = pending.launch.as_ref();
+    let guest = launch.is_some_and(|launch| launch.parent.share_id.is_some());
+    let limited = launch.is_some();
+    let access = launch
+        .map(|launch| escape(&launch.access_description()))
+        .unwrap_or_else(|| access.into());
     let html = include_str!("login.html")
-        .replace("{{remember_hidden}}", if explorer { "hidden" } else { "" })
+        .replace(
+            "{{access_note}}",
+            if guest {
+                "The sender decides which files you can use."
+            } else {
+                "Your account decides which files you can use."
+            },
+        )
+        .replace(
+            "{{heading}}",
+            if guest {
+                "Open shared files"
+            } else {
+                "Sign in"
+            },
+        )
+        .replace(
+            "{{continue_label}}",
+            if guest {
+                "Open in application"
+            } else {
+                "Sign in &amp; continue"
+            },
+        )
+        .replace("{{credentials_hidden}}", if guest { "hidden" } else { "" })
+        .replace(
+            "{{credentials_disabled}}",
+            if guest { "disabled" } else { "" },
+        )
+        .replace(
+            "{{remember_hidden}}",
+            if explorer || limited { "hidden" } else { "" },
+        )
         .replace(
             "{{remember_disabled}}",
-            if explorer { "disabled" } else { "" },
+            if explorer || limited { "disabled" } else { "" },
         )
         .replace(
             "{{remember_checked}}",
@@ -64,11 +102,13 @@ pub(super) fn form(
             "{{client}}",
             &escape(if explorer {
                 "your files"
+            } else if let Some(launch) = launch {
+                &launch.application_name
             } else {
                 &pending.request.client_id
             }),
         )
-        .replace("{{access}}", access)
+        .replace("{{access}}", &access)
         .replace("{{error}}", &escape(message))
         .replace("{{request_id}}", &escape(id))
         .replace(

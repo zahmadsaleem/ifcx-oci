@@ -39,6 +39,7 @@ pub struct OAuth {
 struct Store {
     client_id: String,
     redirects: Vec<String>,
+    clients: HashMap<String, Vec<String>>,
     forms: HashMap<String, Pending>,
     codes: HashMap<String, Code>,
 }
@@ -54,6 +55,8 @@ struct Authorization {
     code_challenge_method: String,
     #[serde(default)]
     scope: String,
+    #[serde(default)]
+    launch_request: Option<String>,
 }
 
 #[derive(Clone)]
@@ -61,6 +64,7 @@ struct Pending {
     request: Authorization,
     cookie: String,
     expires: u64,
+    launch: Option<crate::registry::open_artifact::Launch>,
 }
 
 struct Code {
@@ -69,6 +73,7 @@ struct Code {
     user: String,
     expires: u64,
     remember: bool,
+    launch: Option<crate::registry::open_artifact::LaunchAuthorization>,
 }
 
 impl Store {
@@ -76,9 +81,9 @@ impl Store {
         if client == EXPLORER_CLIENT {
             return !origin.is_empty() && redirect == format!("{origin}/explore");
         }
-        !self.client_id.is_empty()
-            && client == self.client_id
-            && self.redirects.iter().any(|uri| uri == redirect)
+        self.clients
+            .get(client)
+            .is_some_and(|uris| uris.iter().any(|uri| uri == redirect))
     }
 
     fn prune(&mut self) {
@@ -97,8 +102,9 @@ impl OAuth {
         ensure!(
             !https
                 || store
-                    .redirects
-                    .iter()
+                    .clients
+                    .values()
+                    .flatten()
                     .all(|uri| Url::parse(uri).is_ok_and(|u| u.scheme() == "https")),
             "An HTTPS public URL requires exact HTTPS OAuth callback URLs"
         );
@@ -141,8 +147,31 @@ impl OAuth {
             .map_err(|_| anyhow::anyhow!("OAuth store lock failed"))?;
         store.client_id = client_id.into();
         store.redirects = redirects.to_vec();
+        store.clients.insert(client_id.into(), redirects.to_vec());
         store.forms.clear();
         store.codes.clear();
+        Ok(())
+    }
+
+    pub(crate) fn register_applications(
+        &self,
+        applications: &[crate::applications::Application],
+    ) -> Result<()> {
+        let mut store = self
+            .inner
+            .lock()
+            .map_err(|_| anyhow::anyhow!("OAuth store lock failed"))?;
+        for app in applications {
+            ensure!(
+                !store.clients.contains_key(&app.id),
+                "OAuth client ID is already registered"
+            );
+        }
+        for app in applications {
+            store
+                .clients
+                .insert(app.id.clone(), app.redirect_uris.clone());
+        }
         Ok(())
     }
 }
@@ -194,15 +223,35 @@ fn error(status: StatusCode, code: &str) -> Response {
     hardened((status, Json(json!({"error": code}))))
 }
 
-async fn config(State(registry): State<std::sync::Arc<Registry>>) -> Response {
+#[derive(Deserialize, Default)]
+struct ConfigQuery {
+    client_id: Option<String>,
+}
+
+async fn config(
+    State(registry): State<std::sync::Arc<Registry>>,
+    Query(query): Query<ConfigQuery>,
+) -> Response {
     let Ok(store) = registry.oauth.inner.lock() else {
         return error(StatusCode::INTERNAL_SERVER_ERROR, "server_error");
     };
     let endpoint = registry.oauth_authorization_endpoint();
+    let client = query.client_id.as_deref().unwrap_or(&store.client_id);
+    let redirects = if client == EXPLORER_CLIENT {
+        vec![format!("{}/explore", registry.public_origin())]
+    } else if client.is_empty() {
+        Vec::new()
+    } else if let Some(uris) = store.clients.get(client) {
+        uris.clone()
+    } else {
+        return error(StatusCode::BAD_REQUEST, "invalid_client");
+    };
+    let cookie_name = session::cookie_name_for(client, &store.client_id);
     hardened(Json(
-        json!({"client_id":store.client_id,"authorization_endpoint":endpoint,
-        "token_endpoint":"/oauth/token","session_scope":crate::auth::SESSION_SCOPE,"scoped_token_endpoint":"/token","redirect_uris":store.redirects,
-        "refresh_cookie_name":session::COOKIE,"revocation_endpoint":"/oauth/revoke",
+        json!({"client_id":client,"authorization_endpoint":endpoint,
+        "issuer":registry.public_origin(),"open_artifact_protocol":"open-artifact/1",
+        "token_endpoint":"/oauth/token","session_scope":crate::auth::SESSION_SCOPE,"scoped_token_endpoint":"/token","redirect_uris":redirects,
+        "refresh_cookie_name":cookie_name,"revocation_endpoint":"/oauth/revoke",
         "session_max_age":crate::auth::SESSION_SECONDS,"remembered_session_max_age":crate::auth::REMEMBER_SECONDS,
         "code_challenge_methods_supported":["S256"]}),
     ))
@@ -254,6 +303,13 @@ async fn authorize(
     {
         return error(StatusCode::BAD_REQUEST, "invalid_request");
     }
+    let launch = match request.launch_request.as_deref() {
+        Some(id) => match registry.pending_launch(id, &request.client_id) {
+            Ok(launch) if request.scope == crate::auth::SESSION_SCOPE => Some(launch),
+            _ => return error(StatusCode::BAD_REQUEST, "invalid_request"),
+        },
+        None => None,
+    };
     store.prune();
     if store.forms.len() + store.codes.len() >= MAX_PENDING {
         return error(StatusCode::TOO_MANY_REQUESTS, "temporarily_unavailable");
@@ -263,6 +319,7 @@ async fn authorize(
         request,
         cookie: random(),
         expires: now() + FORM_SECONDS,
+        launch,
     };
     let mut response = form(&id, &pending, "", "", false);
     response.headers_mut().insert(header::SET_COOKIE,
@@ -312,7 +369,25 @@ async fn consent(
     if !has_cookie || !matches!(input.decision.as_str(), "allow" | "deny") {
         return error(StatusCode::FORBIDDEN, "invalid_request");
     }
-    if input.decision == "allow" {
+    let guest = pending
+        .launch
+        .as_ref()
+        .is_some_and(|launch| launch.parent.share_id.is_some());
+    let launch_cookie = pending
+        .launch
+        .as_ref()
+        .filter(|_| guest)
+        .map(|launch| launch.clear_cookie(registry.secure_cookies()));
+    if guest
+        && input.decision == "allow"
+        && !pending
+            .launch
+            .as_ref()
+            .is_some_and(|launch| launch.has_cookie(&headers))
+    {
+        return error(StatusCode::FORBIDDEN, "invalid_request");
+    }
+    if input.decision == "allow" && !guest {
         match registry
             .password_login(input.username.clone(), input.password)
             .await
@@ -351,9 +426,27 @@ async fn consent(
             .query_pairs_mut()
             .append_pair("error", "access_denied");
     } else {
-        let mut permissions = match registry.auth.grants(&input.username) {
+        let user = if guest {
+            pending
+                .launch
+                .as_ref()
+                .expect("guest launch")
+                .parent
+                .sub
+                .clone()
+        } else {
+            input.username.clone()
+        };
+        let mut permissions = match registry.auth.grants(&user) {
             Ok(p) => p,
             Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "server_error"),
+        };
+        let launch = match pending.launch {
+            Some(launch) => match registry.approve_launch(launch, &user, &permissions) {
+                Ok(authorization) => Some(authorization),
+                Err(_) => return error(StatusCode::FORBIDDEN, "access_denied"),
+            },
+            None => None,
         };
         // The embedded explorer can only receive artifacts, even for a publisher account.
         let explorer = pending.request.client_id == EXPLORER_CLIENT;
@@ -365,14 +458,20 @@ async fn consent(
         }
         let code = random();
         redirect.query_pairs_mut().append_pair("code", &code);
+        if launch.is_some() {
+            redirect
+                .query_pairs_mut()
+                .append_pair("iss", &registry.public_origin());
+        }
         store.codes.insert(
             code,
             Code {
                 permissions,
                 request: pending.request,
-                user: input.username,
+                user,
                 expires: now() + CODE_SECONDS,
                 remember: input.remember_me && !explorer,
+                launch,
             },
         );
     }
@@ -391,6 +490,9 @@ async fn consent(
         .parse()
         .expect("generated cookie"),
     );
+    if let Some(cookie) = launch_cookie {
+        response.headers_mut().append(header::SET_COOKIE, cookie);
+    }
     response
 }
 

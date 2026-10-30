@@ -7,6 +7,7 @@
   <title>Your files · Subsoil</title>
   <link rel="icon" type="image/svg+xml" href="/brand/symbol.svg">
   <link rel="stylesheet" href="/explore/style.css">
+  <script src="/open-artifact/controls.js" defer></script>
   <script src="/explore/app.js" defer></script>
 </head>
 <body>
@@ -44,6 +45,7 @@
       <article id="artifact" hidden>
         <h2 id="artifact-title"></h2>
         <dl id="metadata"></dl>
+        <section id="open-with" aria-label="Open in an application" hidden></section>
         <div class="reference"><span>Share this version with someone who has access.</span><button id="copy">Copy link</button></div>
         <h3>Files in this version <span id="file-count"></span></h3>
         <div class="table-wrap"><table><thead><tr><th scope="col">File</th><th scope="col">Type</th><th scope="col" class="size">Size</th></tr></thead><tbody id="files"></tbody></table></div>

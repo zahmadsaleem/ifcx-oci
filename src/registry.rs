@@ -31,6 +31,7 @@ mod brand;
 mod cors;
 mod discovery;
 mod explorer;
+pub(crate) mod open_artifact;
 mod public_url;
 mod publication;
 mod shares;
@@ -47,6 +48,8 @@ pub struct Registry {
     root: PathBuf,
     pub auth: Auth,
     pub oauth: crate::oauth::OAuth,
+    applications: std::sync::RwLock<crate::applications::Applications>,
+    launches: std::sync::Mutex<HashMap<String, open_artifact::Launch>>,
     public_url: std::sync::RwLock<Option<reqwest::Url>>,
     cors: std::sync::RwLock<Option<tower_http::cors::CorsLayer>>,
     mutation: Mutex<()>,
@@ -81,6 +84,8 @@ impl Registry {
             root: root.into(),
             auth: Auth::open(root)?,
             oauth: crate::oauth::OAuth::default(),
+            applications: std::sync::RwLock::new(crate::applications::Applications::default()),
+            launches: std::sync::Mutex::new(HashMap::new()),
             public_url: std::sync::RwLock::new(None),
             cors: std::sync::RwLock::new(None),
             mutation: Mutex::new(()),
@@ -117,6 +122,7 @@ pub fn router(registry: Arc<Registry>) -> Router {
         .clone();
     let mut api = Router::new()
         .merge(shares::router())
+        .merge(open_artifact::router())
         .route("/token", any(token))
         .route("/v2/", any(base))
         .route("/v2", any(base))

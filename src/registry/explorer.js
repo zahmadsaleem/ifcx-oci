@@ -32,6 +32,8 @@
     $('repositories').replaceChildren();
     $('tags').replaceChildren();
     $('artifact').hidden = true;
+    $('open-with').hidden = true;
+    $('open-with').replaceChildren();
     $('metadata').replaceChildren();
     $('technical-metadata').replaceChildren();
     $('files').replaceChildren();
@@ -315,6 +317,8 @@
     $('manifest').textContent = JSON.stringify(manifest, null, 2);
     $('artifact').hidden = false;
     status('');
+    window.SubsoilOpenArtifactUI($('open-with'), root, repo, digest || tag, () => ticket === selection)
+      .catch(error => { if (ticket === selection) status(error.message, true); });
   }
 
   const base64 = bytes => btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');

@@ -93,7 +93,7 @@ Wildcards and `null` origins are rejected. OAuth callback registration remains
 separate and still requires the exact callback URL.
 
 Allowed origins receive CORS headers on `/v2`, `/v2/…`, `/token`, `/oauth/config`,
-`/oauth/token`, `/oauth/revoke` and `/shares` routes, including error responses and unauthenticated
+`/oauth/token`, `/oauth/revoke`, `/shares` and `/open-artifact/…` routes, including error responses and unauthenticated
 OPTIONS preflights. GET, HEAD, POST, PUT, PATCH, DELETE and OPTIONS are allowed,
 with Authorization, Accept, Content-Type, Content-Range and Range request headers.
 The browser can read WWW-Authenticate, Location, Link, Range, Content-Range,

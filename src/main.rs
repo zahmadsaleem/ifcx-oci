@@ -47,6 +47,9 @@ enum Command {
         /// Exact callback URL for the registered client; repeat per origin.
         #[arg(long = "oauth-redirect-uri", requires = "oauth_client_id")]
         oauth_redirect_uris: Vec<String>,
+        /// JSON registrations for artifact profiles and external applications.
+        #[arg(long)]
+        applications: Option<PathBuf>,
         /// Maximum lifetime of a share, in seconds.
         #[arg(long, default_value_t = subsoil::auth::DEFAULT_SHARE_MAX_SECONDS)]
         share_max_age: u64,
@@ -341,6 +344,7 @@ async fn main() -> Result<()> {
             cors_origins,
             oauth_client_id,
             oauth_redirect_uris,
+            applications,
             share_max_age,
         } => {
             let registry = Registry::open(data)?;
@@ -351,10 +355,21 @@ async fn main() -> Result<()> {
             if let Some(public_url) = public_url {
                 registry.set_public_url(&public_url)?;
             }
-            registry.set_cors_origins(&cors_origins)?;
             if let Some(client_id) = oauth_client_id {
                 registry.oauth.configure(&client_id, &oauth_redirect_uris)?;
             }
+            let mut origins = cors_origins;
+            if let Some(path) = applications {
+                let configuration = subsoil::applications::Applications::parse(&fs::read(path)?)?;
+                origins.extend(
+                    configuration
+                        .applications
+                        .iter()
+                        .flat_map(|app| app.cors_origins.iter().cloned()),
+                );
+                registry.configure_applications(configuration)?;
+            }
+            registry.set_cors_origins(&origins)?;
             let listener = registry::bind(listen).await?;
             eprintln!(
                 "OCI registry listening on http://{} (JWT authentication required)",

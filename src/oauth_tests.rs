@@ -9,6 +9,7 @@ fn request() -> Authorization {
         code_challenge: challenge(&"a".repeat(43)),
         code_challenge_method: "S256".into(),
         scope: "repository:project/model:pull,push".into(),
+        launch_request: None,
     }
 }
 
@@ -72,6 +73,7 @@ async fn code_exchange_binds_client_callback_verifier_expiry_and_is_single_use()
                 request: req.clone(),
                 user: "reader".into(),
                 remember: false,
+                launch: None,
                 expires: if bad == "expired" { now() } else { now() + 60 },
             },
         );
@@ -193,6 +195,7 @@ async fn login_retry_escapes_input_and_does_not_expand_user_supplied_template_fi
         request: request(),
         cookie: random(),
         expires: now() + 300,
+        launch: None,
     };
     let input = "\"><img src=x onerror=alert(1)>{{request_id}}";
     let response = page::form(
@@ -233,6 +236,7 @@ async fn session_code_preserves_permissions_captured_at_consent() -> Result<()> 
             user: "reader".into(),
             expires: now() + 60,
             remember: false,
+            launch: None,
         },
     );
     registry.auth.grant("reader", "project/model:push")?;

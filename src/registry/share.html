@@ -4,6 +4,7 @@
 <header><a href="/explore"><img src="/brand/logo.svg" alt="Subsoil" width="160" height="40"></a></header>
 <h1>Files shared with you</h1><p>See what your team has shared. Ask the sender if you need help opening a model.</p><p id="status" role="status" aria-live="polite">Opening shared files…</p><ul id="repositories"></ul>
 <noscript><p>Turn on JavaScript in your browser to see these files.</p></noscript>
+<script src="/open-artifact/controls.js"></script>
 <script>
 (async()=>{
  const secret=new URLSearchParams(location.hash.slice(1)).get('secret');
@@ -38,7 +39,9 @@
       if(!files.length){const empty=document.createElement('li');empty.textContent='No files to show in this version.';names.append(empty);}
       const details=document.createElement('details'),summary=document.createElement('summary'),pre=document.createElement('pre');
       summary.textContent='Technical details';pre.textContent=JSON.stringify(manifest,null,2);details.append(summary,pre);
-      item.append(names,details);button.remove();
+      const applications=document.createElement('section');applications.setAttribute('aria-label','Open in an application');
+      item.append(names,applications,details);button.remove();
+      await window.SubsoilOpenArtifactUI(applications,async()=>{if(Date.now()>deadline-10000)await login();return root;},repo,tag);
      }catch(error){status.textContent=message(error);button.disabled=false;button.textContent='Show files';}
     };
     item.append(button);

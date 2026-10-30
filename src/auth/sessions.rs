@@ -101,21 +101,30 @@ impl Auth {
         remember: bool,
     ) -> Result<SessionTokens> {
         let (user, permissions) = approved;
-        let id = Uuid::new_v4().to_string();
         let expires = now()
             + if remember {
                 REMEMBER_SECONDS
             } else {
                 SESSION_SECONDS
             };
+        let context =
+            super::AuthorizationContext::new(user, vec![permissions], expires, None, None)?;
+        self.start_limited_session(context, scopes, client_id, redirect_uri, remember)
+    }
+
+    pub(crate) fn start_limited_session(
+        &self,
+        mut context: super::AuthorizationContext,
+        scopes: &[String],
+        client_id: &str,
+        redirect_uri: &str,
+        remember: bool,
+    ) -> Result<SessionTokens> {
+        let id = Uuid::new_v4().to_string();
+        context.session = Some(id.clone());
+        let user = context.user.clone();
+        let expires = context.expires;
         let root = scopes == [super::SESSION_SCOPE.to_string()];
-        let mut context = super::AuthorizationContext::new(
-            user,
-            vec![permissions],
-            expires,
-            Some(id.clone()),
-            None,
-        )?;
         let catalog = ["registry:catalog:*".into()];
         let access = self.requested_in(&context, if root { &catalog } else { scopes })?;
         if !root {
@@ -134,7 +143,7 @@ impl Auth {
         }
         let session = RefreshSession {
             id,
-            user: user.into(),
+            user,
             client_id: client_id.into(),
             redirect_uri: redirect_uri.into(),
             expires,
@@ -266,6 +275,9 @@ impl Auth {
         context.expires = context.expires.min(session.expires);
         let (access_token, claims) =
             self.sign_authorization(&context, access, session.root, TOKEN_SECONDS.min(remaining))?;
+        if claims.share_id.is_some() {
+            self.check_authorization(&claims)?;
+        }
         Ok(SessionTokens {
             permissions: context.limits.first().cloned().unwrap_or_default(),
             access_token,

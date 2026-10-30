@@ -45,7 +45,7 @@
       devShells = eachSystem (system:
         let pkgs = import nixpkgs { inherit system; };
         in { default = pkgs.mkShell {
-          packages = with pkgs; [ cargo rustc rustfmt clippy pkg-config oras jq ];
+          packages = with pkgs; [ cargo rustc rustfmt clippy pkg-config oras jq nodejs ];
         }; });
       checks = eachSystem (system: { build = packageFor system; });
     };

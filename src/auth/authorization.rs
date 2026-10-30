@@ -25,7 +25,7 @@ pub(super) fn schema(db: &Connection) -> Result<()> {
 }
 
 impl AuthorizationContext {
-    pub(super) fn new(
+    pub(crate) fn new(
         user: &str,
         limits: Vec<Vec<Grant>>,
         expires: u64,
