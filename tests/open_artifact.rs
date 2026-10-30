@@ -29,6 +29,36 @@ fn configuration() -> Value {
     ]})
 }
 
+fn cookies(response: &Response) -> String {
+    response
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .map(|value| value.split(';').next().unwrap().to_string())
+        .filter(|value| !value.ends_with('='))
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+fn form_id(html: &str) -> &str {
+    html.split("name=\"request_id\" value=\"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap()
+}
+
+fn code_from(response: &Response) -> String {
+    let url = Url::parse(response.headers()["location"].to_str().unwrap()).unwrap();
+    url.query_pairs()
+        .find(|(key, _)| key == "code")
+        .unwrap()
+        .1
+        .into_owned()
+}
+
 struct Fixture {
     temp: tempfile::TempDir,
     registry: Arc<Registry>,
@@ -44,6 +74,158 @@ impl Drop for Fixture {
 }
 
 impl Fixture {
+    async fn browser_login(&self, user: &str) -> Result<(Value, String)> {
+        let callback = format!("{}/explore", self.origin);
+        let page = self
+            .http
+            .get(format!("{}/oauth/authorize", self.origin))
+            .query(&[
+                ("response_type", "code"),
+                ("client_id", "subsoil-explorer"),
+                ("redirect_uri", &callback),
+                ("scope", SESSION_SCOPE),
+                ("state", "browser-login-state"),
+                ("code_challenge_method", "S256"),
+                ("code_challenge", &challenge(VERIFIER)),
+            ])
+            .send()
+            .await?;
+        assert_eq!(page.status(), 200);
+        let csrf = cookies(&page);
+        let html = page.text().await?;
+        let consent = self
+            .http
+            .post(format!("{}/oauth/authorize", self.origin))
+            .header("Origin", &self.origin)
+            .header("Cookie", csrf)
+            .form(&[
+                ("request_id", form_id(&html)),
+                ("username", user),
+                ("password", PASSWORD),
+                ("decision", "allow"),
+            ])
+            .send()
+            .await?;
+        assert_eq!(consent.status(), 303, "{}", consent.text().await?);
+        let binding = cookies(&consent);
+        assert!(binding.starts_with("subsoil_browser="));
+        let attributes = consent
+            .headers()
+            .get_all("set-cookie")
+            .iter()
+            .filter_map(|v| v.to_str().ok())
+            .find(|v| v.starts_with("subsoil_browser="))
+            .unwrap();
+        assert!(attributes.contains("HttpOnly; SameSite=Lax; Path=/"));
+        assert!(!attributes.contains("Max-Age"));
+        let response = self
+            .http
+            .post(format!("{}/oauth/token", self.origin))
+            .form(&[
+                ("grant_type", "authorization_code"),
+                ("client_id", "subsoil-explorer"),
+                ("redirect_uri", &callback),
+                ("code", &code_from(&consent)),
+                ("code_verifier", VERIFIER),
+            ])
+            .send()
+            .await?;
+        assert_eq!(response.status(), 200);
+        Ok((response.json().await?, binding))
+    }
+
+    async fn browser_launch(
+        &self,
+        root: &str,
+        binding: &str,
+        edit: bool,
+        explicit: bool,
+    ) -> Result<(Value, String)> {
+        let mut request = self.request(edit);
+        request["ttl"] = json!(900);
+        if edit {
+            request["publish"]["allowed_tags"] = json!(["*"]);
+        }
+        if explicit {
+            request["decision"] = json!("open");
+        }
+        let response = self
+            .http
+            .post(format!("{}/open-artifact/launches", self.origin))
+            .header("Origin", &self.origin)
+            .header("Cookie", binding)
+            .bearer_auth(root)
+            .json(&request)
+            .send()
+            .await?;
+        assert_eq!(response.status(), 200, "{}", response.text().await?);
+        assert!(response.headers()["set-cookie"]
+            .to_str()?
+            .contains("HttpOnly; SameSite=Lax; Path=/oauth/authorize"));
+        let proof = cookies(&response);
+        let proof = if proof.contains("subsoil_browser=") {
+            proof
+        } else {
+            format!("{proof}; {binding}")
+        };
+        Ok((response.json().await?, proof))
+    }
+
+    async fn bound_authorize(
+        &self,
+        launch: &Value,
+        proof: &str,
+        prompt: Option<&str>,
+    ) -> Result<Response> {
+        let mut query = vec![
+            ("response_type", "code".to_string()),
+            ("client_id", CLIENT.into()),
+            ("redirect_uri", CALLBACK.into()),
+            ("scope", SESSION_SCOPE.into()),
+            ("state", "bound-launch-state".into()),
+            ("code_challenge_method", "S256".into()),
+            ("code_challenge", challenge(VERIFIER)),
+            (
+                "launch_request",
+                launch["request_id"].as_str().unwrap().into(),
+            ),
+        ];
+        if let Some(prompt) = prompt {
+            query.push(("prompt", prompt.into()));
+        }
+        Ok(self
+            .http
+            .get(format!("{}/oauth/authorize", self.origin))
+            .header("Cookie", proof)
+            .query(&query)
+            .send()
+            .await?)
+    }
+
+    async fn bound_consent(
+        &self,
+        page: Response,
+        proof: &str,
+        user: &str,
+        password: &str,
+    ) -> Result<Response> {
+        let csrf = cookies(&page);
+        let html = page.text().await?;
+        Ok(self
+            .http
+            .post(format!("{}/oauth/authorize", self.origin))
+            .header("Origin", &self.origin)
+            .header("Cookie", format!("{proof}; {csrf}"))
+            .form(&[
+                ("request_id", form_id(&html)),
+                ("username", user),
+                ("password", password),
+                ("decision", "allow"),
+            ])
+            .send()
+            .await?)
+    }
+
     async fn new() -> Result<Self> {
         let temp = tempfile::tempdir()?;
         let registry = Registry::open(temp.path())?;
@@ -367,7 +549,7 @@ async fn account_launch_pins_source_and_publishes_only_new_allowed_versions() ->
     let (source, source_blob) = fixture.model("issued", "source").await?;
     let (hidden, hidden_blob) = fixture.model("private", "private").await?;
     let (launch, cookie) = fixture.launch(&fixture.root("owner")?, true).await?;
-    assert!(cookie.is_empty());
+    assert!(cookie.starts_with("subsoil_launch_"));
     let url = Url::parse(launch["launch_url"].as_str().unwrap())?;
     assert_eq!(url.origin().ascii_serialization(), "http://localhost:3000");
     assert!(!url.as_str().contains("token"));
@@ -529,6 +711,488 @@ async fn chooser_defaults_keep_intent_separate_and_let_the_app_choose_version_na
     let (root, _, _) = fixture.registry.auth.redeem_share(&share.secret)?;
     let discovery: Value = fixture.get(&path, &root).await?.json().await?;
     assert!(discovery["applications"][0]["launches"]["edit"].is_null());
+    Ok(())
+}
+
+#[tokio::test]
+async fn signed_in_registry_decision_opens_exact_view_or_edit_without_duplicate_credentials(
+) -> Result<()> {
+    let fixture = Fixture::new().await?;
+    let (digest, _) = fixture.model("issued", "source").await?;
+    let (login, binding) = fixture.browser_login("owner").await?;
+    assert!(login["permissions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|g| g["actions"] == json!(["pull"])));
+    for edit in [false, true] {
+        let (launch, proof) = fixture
+            .browser_launch(
+                login["access_token"].as_str().unwrap(),
+                &binding,
+                edit,
+                true,
+            )
+            .await?;
+        let response = fixture.bound_authorize(&launch, &proof, None).await?;
+        assert_eq!(response.status(), 303, "{}", response.text().await?);
+        assert!(!response.headers()["location"]
+            .to_str()?
+            .contains(login["access_token"].as_str().unwrap()));
+        let code = code_from(&response);
+        let response = fixture.exchange(&code, CLIENT, VERIFIER).await?;
+        assert_eq!(response.status(), 200, "{}", response.text().await?);
+        let session: Value = response.json().await?;
+        assert_eq!(session["subject"], "owner");
+        assert_eq!(session["open_artifact"]["source"]["digest"], digest);
+        assert_eq!(
+            session["open_artifact"]["intent"],
+            if edit { "edit" } else { "view" }
+        );
+        let token = fixture
+            .scoped(session["access_token"].as_str().unwrap())
+            .await?;
+        let claims = fixture.registry.auth.validate(&token)?;
+        assert_eq!(fixture.registry.auth.permits(&claims, REPO, "push")?, edit);
+        assert_eq!(
+            fixture
+                .bound_authorize(&launch, &proof, None)
+                .await?
+                .status(),
+            400
+        );
+        assert_eq!(
+            fixture.exchange(&code, CLIENT, VERIFIER).await?.status(),
+            400
+        );
+        if !edit {
+            let (broader, receiver_proof) = fixture
+                .browser_launch(
+                    session["access_token"].as_str().unwrap(),
+                    &binding,
+                    true,
+                    false,
+                )
+                .await?;
+            let page = fixture
+                .bound_authorize(&broader, &receiver_proof, None)
+                .await?;
+            assert_eq!(page.status(), 200);
+            assert!(!page.text().await?.contains("<fieldset hidden disabled"));
+        }
+    }
+    // An identity marker is never a registry API token.
+    assert!(fixture
+        .registry
+        .auth
+        .validate(binding.strip_prefix("subsoil_browser=").unwrap())
+        .is_err());
+    Ok(())
+}
+
+#[tokio::test]
+async fn authenticated_api_launch_shows_consent_and_prompt_login_requires_fresh_credentials(
+) -> Result<()> {
+    let fixture = Fixture::new().await?;
+    fixture.model("issued", "source").await?;
+    let (login, binding) = fixture.browser_login("owner").await?;
+    for prompt in [None, Some("consent"), Some("login")] {
+        let (launch, proof) = fixture
+            .browser_launch(
+                login["access_token"].as_str().unwrap(),
+                &binding,
+                false,
+                prompt.is_some(),
+            )
+            .await?;
+        let page = fixture.bound_authorize(&launch, &proof, prompt).await?;
+        assert_eq!(page.status(), 200);
+        let csrf = cookies(&page);
+        let html = page.text().await?;
+        assert_eq!(
+            html.contains("<fieldset hidden disabled"),
+            prompt != Some("login")
+        );
+        let form = [("request_id", form_id(&html)), ("decision", "allow")];
+        let csrf_denied = fixture
+            .http
+            .post(format!("{}/oauth/authorize", fixture.origin))
+            .header("Origin", "https://foreign.example")
+            .header("Cookie", format!("{proof}; {csrf}"))
+            .form(&form)
+            .send()
+            .await?;
+        assert_eq!(csrf_denied.status(), 403);
+        let mut fields = form.to_vec();
+        if prompt == Some("login") {
+            let rejected = fixture
+                .http
+                .post(format!("{}/oauth/authorize", fixture.origin))
+                .header("Origin", &fixture.origin)
+                .header("Cookie", format!("{proof}; {csrf}"))
+                .form(&fields)
+                .send()
+                .await?;
+            assert_eq!(rejected.status(), 200);
+            assert!(!rejected.headers().contains_key("location"));
+            fields.extend([("username", "owner"), ("password", PASSWORD)]);
+        }
+        let approved = fixture
+            .http
+            .post(format!("{}/oauth/authorize", fixture.origin))
+            .header("Origin", &fixture.origin)
+            .header("Cookie", format!("{proof}; {csrf}"))
+            .form(&fields)
+            .send()
+            .await?;
+        assert_eq!(approved.status(), 303, "{}", approved.text().await?);
+        assert_eq!(
+            fixture
+                .exchange(&code_from(&approved), CLIENT, VERIFIER)
+                .await?
+                .status(),
+            200
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn launch_id_or_copied_read_only_root_cannot_supply_browser_authentication_or_write_approval(
+) -> Result<()> {
+    let fixture = Fixture::new().await?;
+    fixture.model("issued", "source").await?;
+    let (login, binding) = fixture.browser_login("owner").await?;
+    let root = login["access_token"].as_str().unwrap();
+    let (launch, proof) = fixture.browser_launch(root, &binding, false, true).await?;
+    let launch_cookie = proof
+        .split(';')
+        .find(|v| v.trim().starts_with("subsoil_launch_"))
+        .unwrap()
+        .trim();
+    for unbound in [
+        "".to_string(),
+        binding.clone(),
+        launch_cookie.into(),
+        format!("{launch_cookie}; subsoil_browser=forged"),
+    ] {
+        let page = fixture.bound_authorize(&launch, &unbound, None).await?;
+        assert_eq!(page.status(), 200);
+        let csrf = cookies(&page);
+        let html = page.text().await?;
+        assert!(!html.contains("<fieldset hidden disabled"));
+        let rejected = fixture
+            .http
+            .post(format!("{}/oauth/authorize", fixture.origin))
+            .header("Origin", &fixture.origin)
+            .header("Cookie", format!("{unbound}; {csrf}"))
+            .form(&[("request_id", form_id(&html)), ("decision", "allow")])
+            .send()
+            .await?;
+        assert_eq!(rejected.status(), 200);
+        assert!(!rejected.headers().contains_key("location"));
+    }
+    // Bootstrapping a proof from a copied read-only credential cannot approve push.
+    let (edit, copied_proof) = fixture.browser_launch(root, "", true, true).await?;
+    let page = fixture.bound_authorize(&edit, &copied_proof, None).await?;
+    assert_eq!(page.status(), 200);
+    assert!(!page.text().await?.contains("<fieldset hidden disabled"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn account_switch_or_browser_rotation_invalidates_pending_authentication_and_consent(
+) -> Result<()> {
+    let fixture = Fixture::new().await?;
+    fixture.model("issued", "source").await?;
+    let (login, binding) = fixture.browser_login("owner").await?;
+    let root = login["access_token"].as_str().unwrap();
+    let (launch, proof) = fixture.browser_launch(root, &binding, false, false).await?;
+    let page = fixture.bound_authorize(&launch, &proof, None).await?;
+    assert_eq!(page.status(), 200);
+    let (_, other_binding) = fixture.browser_login("reader").await?;
+    let launch_cookie = proof
+        .split(';')
+        .find(|v| v.trim().starts_with("subsoil_launch_"))
+        .unwrap()
+        .trim();
+    let switched = format!("{launch_cookie}; {other_binding}");
+    assert_eq!(
+        fixture
+            .bound_authorize(&launch, &switched, None)
+            .await?
+            .status(),
+        403
+    );
+    assert_eq!(
+        fixture
+            .bound_consent(page, &switched, "", "")
+            .await?
+            .status(),
+        403
+    );
+    let response = fixture
+        .http
+        .post(format!("{}/open-artifact/launches", fixture.origin))
+        .header("Origin", &fixture.origin)
+        .header("Cookie", other_binding)
+        .bearer_auth(root)
+        .json(&fixture.request(false))
+        .send()
+        .await?;
+    assert_eq!(response.status(), 400);
+    let (_, rotated) = fixture.browser_login("owner").await?;
+    assert_eq!(
+        fixture
+            .bound_authorize(&launch, &format!("{launch_cookie}; {rotated}"), None)
+            .await?
+            .status(),
+        403
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn cancelling_consent_invalidates_the_initial_registry_launch_decision() -> Result<()> {
+    let fixture = Fixture::new().await?;
+    fixture.model("issued", "source").await?;
+    let (login, binding) = fixture.browser_login("owner").await?;
+    let (launch, proof) = fixture
+        .browser_launch(
+            login["access_token"].as_str().unwrap(),
+            &binding,
+            false,
+            true,
+        )
+        .await?;
+    let page = fixture
+        .bound_authorize(&launch, &proof, Some("consent"))
+        .await?;
+    assert_eq!(page.status(), 200);
+    let csrf = cookies(&page);
+    let html = page.text().await?;
+    let denied = fixture
+        .http
+        .post(format!("{}/oauth/authorize", fixture.origin))
+        .header("Origin", &fixture.origin)
+        .header("Cookie", format!("{proof}; {csrf}"))
+        .form(&[("request_id", form_id(&html)), ("decision", "deny")])
+        .send()
+        .await?;
+    assert_eq!(denied.status(), 303);
+    assert!(denied.headers()["location"]
+        .to_str()?
+        .contains("error=access_denied"));
+    assert_eq!(
+        fixture
+            .bound_authorize(&launch, &proof, None)
+            .await?
+            .status(),
+        400
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn explicit_launch_decision_rejects_broader_lifetime_destination_and_foreign_initiators(
+) -> Result<()> {
+    let fixture = Fixture::new().await?;
+    fixture.model("issued", "source").await?;
+    fixture
+        .registry
+        .auth
+        .grant("owner", "other/model:pull,push")?;
+    let (login, binding) = fixture.browser_login("owner").await?;
+    let root = login["access_token"].as_str().unwrap();
+    for bad in ["ttl", "destination", "tag-policy", "origin", "client"] {
+        let mut request = fixture.request(true);
+        request["ttl"] = json!(900);
+        request["publish"]["allowed_tags"] = json!(["*"]);
+        request["decision"] = json!("open");
+        if bad == "ttl" {
+            request["ttl"] = json!(901);
+        }
+        if bad == "destination" {
+            request["publish"]["repository"] = json!("other/model");
+        }
+        if bad == "tag-policy" {
+            request["publish"]["allowed_tags"] = json!(["review-*"]);
+        }
+        let external = fixture.registry.auth.start_session(
+            "owner",
+            &[SESSION_SCOPE.into()],
+            CLIENT,
+            CALLBACK,
+            false,
+        )?;
+        let response = fixture
+            .http
+            .post(format!("{}/open-artifact/launches", fixture.origin))
+            .header(
+                "Origin",
+                if bad == "origin" {
+                    "https://foreign.example"
+                } else {
+                    &fixture.origin
+                },
+            )
+            .header("Cookie", &binding)
+            .bearer_auth(if bad == "client" {
+                &external.access_token
+            } else {
+                root
+            })
+            .json(&request)
+            .send()
+            .await?;
+        assert_eq!(response.status(), 400, "{bad}");
+    }
+    // A custom destination receives a separate consent page, with existing authentication.
+    let mut request = fixture.request(true);
+    request["publish"]["repository"] = json!("other/model");
+    let response = fixture
+        .http
+        .post(format!("{}/open-artifact/launches", fixture.origin))
+        .header("Origin", &fixture.origin)
+        .header("Cookie", &binding)
+        .bearer_auth(root)
+        .json(&request)
+        .send()
+        .await?;
+    assert_eq!(response.status(), 200);
+    let proof = format!("{}; {binding}", cookies(&response));
+    let launch = response.json::<Value>().await?;
+    let page = fixture.bound_authorize(&launch, &proof, None).await?;
+    assert_eq!(page.status(), 200);
+    let html = page.text().await?;
+    assert!(html.contains("other/model") && html.contains("<fieldset hidden disabled"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn session_revocation_expiry_and_permission_removal_reject_browser_bound_launches(
+) -> Result<()> {
+    let fixture = Fixture::new().await?;
+    fixture.model("issued", "source").await?;
+    for reason in ["revoked", "expired", "source", "publish-after-code"] {
+        fixture
+            .registry
+            .auth
+            .grant("owner", &format!("{REPO}:pull,push"))?;
+        let (login, binding) = fixture.browser_login("owner").await?;
+        let root = login["access_token"].as_str().unwrap();
+        let (launch, proof) = fixture.browser_launch(root, &binding, true, true).await?;
+        let claims = fixture.registry.auth.validate(root)?;
+        if reason == "revoked" || reason == "expired" {
+            let db = rusqlite::Connection::open(fixture.temp.path().join("auth.sqlite"))?;
+            db.execute(
+                if reason == "revoked" {
+                    "UPDATE oauth_sessions SET revoked=1 WHERE id=?1"
+                } else {
+                    "UPDATE oauth_sessions SET expires=0 WHERE id=?1"
+                },
+                [claims.sid.as_ref().unwrap()],
+            )?;
+            assert_eq!(
+                fixture
+                    .bound_authorize(&launch, &proof, None)
+                    .await?
+                    .status(),
+                400
+            );
+        } else if reason == "source" {
+            fixture.registry.auth.set_grants(
+                "owner",
+                &GrantSet {
+                    version: 1,
+                    registry: Url::parse(&fixture.origin)?.authority().into(),
+                    grants: vec![],
+                },
+            )?;
+            assert_eq!(
+                fixture
+                    .bound_authorize(&launch, &proof, None)
+                    .await?
+                    .status(),
+                403
+            );
+        } else {
+            let approved = fixture.bound_authorize(&launch, &proof, None).await?;
+            assert_eq!(approved.status(), 303);
+            fixture.registry.auth.set_grants(
+                "owner",
+                &GrantSet {
+                    version: 1,
+                    registry: Url::parse(&fixture.origin)?.authority().into(),
+                    grants: vec![Grant::exact(REPO.into(), vec!["pull".into()])],
+                },
+            )?;
+            assert_eq!(
+                fixture
+                    .exchange(&code_from(&approved), CLIENT, VERIFIER)
+                    .await?
+                    .status(),
+                400
+            );
+        }
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn guest_menu_decisions_keep_share_browser_proof_and_separate_consent() -> Result<()> {
+    let fixture = Fixture::new().await?;
+    fixture.model("issued", "source").await?;
+    let (_, account_cookie) = fixture.browser_login("reader").await?;
+    let share = fixture
+        .registry
+        .create_share(
+            "owner",
+            &GrantSet {
+                version: 1,
+                registry: Url::parse(&fixture.origin)?.authority().into(),
+                grants: vec![Grant::exact(REPO.into(), vec!["pull".into()])],
+            },
+            600,
+            subsoil::auth::ShareBinding::Snapshot,
+        )
+        .await?;
+    let (root, _, _) = fixture.registry.auth.redeem_share(&share.secret)?;
+    let mut request = fixture.request(false);
+    request["decision"] = json!("open");
+    let response = fixture
+        .http
+        .post(format!("{}/open-artifact/launches", fixture.origin))
+        .header("Origin", &fixture.origin)
+        .header("Cookie", &account_cookie)
+        .bearer_auth(&root)
+        .json(&request)
+        .send()
+        .await?;
+    assert_eq!(response.status(), 200);
+    assert!(response.headers()["set-cookie"]
+        .to_str()?
+        .contains("SameSite=Strict"));
+    let proof = format!("{}; {account_cookie}", cookies(&response));
+    let launch = response.json::<Value>().await?;
+    let page = fixture.bound_authorize(&launch, &proof, None).await?;
+    assert_eq!(page.status(), 200);
+    let approved = fixture.bound_consent(page, &proof, "", "").await?;
+    assert_eq!(approved.status(), 303);
+    let session = fixture
+        .exchange(&code_from(&approved), CLIENT, VERIFIER)
+        .await?
+        .json::<Value>()
+        .await?;
+    assert_eq!(session["authorization_type"], "share");
+    let token = fixture
+        .scoped(session["access_token"].as_str().unwrap())
+        .await?;
+    assert!(!fixture.registry.auth.permits(
+        &fixture.registry.auth.validate(&token)?,
+        REPO,
+        "push"
+    )?);
     Ok(())
 }
 

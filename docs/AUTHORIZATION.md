@@ -183,13 +183,28 @@ destination writes are separate rules: publication permission leaves other
 versions unreadable and preserves tag immutability. Opening a published result
 uses another authorized launch or an ordinary application connection.
 
-Account holders sign in and explicitly approve the limited application access.
-The read-only file browser can prepare an edit request; the fresh approval checks
-the account's current publication permissions. Share recipients approve on the
-registry's page using browser proof established when they selected the
-application. This requires the redeemed share root and stays within all of its
-existing permissions. A snapshot share opens its selected content for viewing;
-publishing requires a live share that already permits the destination.
+Account launches reuse the active registry login with an independent HttpOnly
+browser proof. Choosing an application through the registry's Open with or Edit
+with menu explicitly approves that application for the selected version and the
+displayed action's bounded access. The registry verifies that decision's origin,
+Explorer session, browser binding, source and publication permissions before
+issuing a one-time code. A copied Explorer token alone can grant only access
+within its existing approval; approving additional write access requires the
+password-authenticated browser proof or fresh sign-in.
+
+Requests prepared through other interfaces show the application's access for
+consent and reuse verified authentication. Applications can request
+`prompt=consent` to show that page or `prompt=login` to require fresh credentials.
+Missing or expired authentication uses the sign-in form. Switching accounts or
+changing browser authentication invalidates pending authentication reuse, while
+expired or revoked initiating sessions require a new launch. Browser identity
+markers carry a separate audience and no API permissions; account credential
+changes invalidate them.
+
+Share recipients continue to approve on the registry's page using the share's
+own browser proof. This requires the redeemed share root and stays within all
+of its existing permissions. A snapshot share opens its selected content for
+viewing; publishing requires a live share that already permits the destination.
 
 The application receives a request ID in its launch URL and starts Authorization
 Code with PKCE S256. The request ID alone grants no access. The single-use code

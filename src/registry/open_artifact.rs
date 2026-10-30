@@ -19,7 +19,7 @@ pub struct Source {
     pub profile: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Publish {
     pub repository: String,
@@ -59,6 +59,8 @@ pub(crate) struct Launch {
     artifact: OpenArtifact,
     cookie: String,
     pending_until: u64,
+    browser: Option<String>,
+    pub explicit_approval: bool,
 }
 
 impl Launch {
@@ -95,6 +97,55 @@ impl Launch {
             None => format!("View this version from {} for up to {minutes} minutes.", self.artifact.source.repository),
         }
     }
+
+    fn within_parent(&self, registry: &Registry) -> Result<bool> {
+        let limits = registry.auth.limits(&self.parent)?;
+        match &self.artifact.publish {
+            Some(target) => {
+                let write = target.grant()?;
+                Ok(limits
+                    .iter()
+                    .all(|rules| policy::delegates(rules, std::slice::from_ref(&write))))
+            }
+            None => Ok(true),
+        }
+    }
+
+    pub(crate) fn authenticated(
+        &self,
+        registry: &Registry,
+        headers: &HeaderMap,
+    ) -> Result<Option<crate::auth::BrowserBinding>> {
+        if self.parent.share_id.is_some() {
+            return Ok(None);
+        }
+        let mut binding = crate::oauth::browser::binding(registry, headers)?;
+        if let Some(binding) = &binding {
+            ensure!(
+                binding.sub == self.parent.sub,
+                "Account changed; open the files again"
+            );
+            if let Some(expected) = &self.browser {
+                ensure!(
+                    binding.jti == *expected,
+                    "Browser authentication changed; open the files again"
+                );
+            }
+        }
+        if let Some(binding) = &mut binding {
+            // Receiving applications retain their own approval ceiling even in a
+            // browser that has authenticated to the registry.
+            binding.password_authenticated &=
+                registry.auth.session_client(&self.parent)? == crate::oauth::EXPLORER_CLIENT;
+        }
+        Ok(binding
+            .filter(|binding| {
+                self.has_cookie(headers) && self.browser.as_ref() == Some(&binding.jti)
+            })
+            .filter(|binding| {
+                binding.password_authenticated || self.within_parent(registry).unwrap_or(false)
+            }))
+    }
 }
 
 pub(crate) struct LaunchAuthorization {
@@ -119,6 +170,8 @@ struct Request {
     ttl: u64,
     #[serde(default)]
     publish: Option<Publish>,
+    #[serde(default)]
+    decision: Option<String>,
 }
 
 async fn hardened(mut response: Response) -> Response {
@@ -304,11 +357,20 @@ impl Registry {
         Ok(launch.clone())
     }
 
+    pub(crate) fn cancel_launch(&self, launch: &Launch) -> Result<()> {
+        self.launches
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Launch store lock failed"))?
+            .remove(&launch.id);
+        Ok(())
+    }
+
     pub(crate) fn approve_launch(
         &self,
         launch: Launch,
         user: &str,
         permissions: &[Grant],
+        inherit_parent: bool,
     ) -> Result<LaunchAuthorization> {
         ensure!(
             user == launch.parent.sub,
@@ -317,7 +379,7 @@ impl Registry {
         self.auth.check_authorization(&launch.parent)?;
         let source = &launch.artifact.source;
         self.source_manifest(&launch.parent, &source.repository, &source.digest)?;
-        let mut limits = if launch.parent.share_id.is_some() {
+        let mut limits = if launch.parent.share_id.is_some() || inherit_parent {
             self.auth.limits(&launch.parent)?
         } else {
             vec![permissions.to_vec()]
@@ -368,6 +430,19 @@ impl Registry {
             "Application binding mismatch"
         );
         self.auth.check_authorization(&approved.launch.parent)?;
+        let source = &approved.launch.artifact.source;
+        self.source_manifest(&approved.launch.parent, &source.repository, &source.digest)?;
+        if let Some(target) = &approved.launch.artifact.publish {
+            let write = target.grant()?;
+            let mut limits = approved.context.limits.clone();
+            limits.push(self.auth.grants(&approved.context.user)?);
+            ensure!(
+                limits
+                    .iter()
+                    .all(|rules| policy::delegates(rules, std::slice::from_ref(&write))),
+                "Publication access changed"
+            );
+        }
         let app = self.application(client)?;
         ensure!(
             app.redirect_uris.iter().any(|uri| uri == redirect),
@@ -486,6 +561,61 @@ async fn create(
         )?;
     }
     let parent_context = registry.auth.authorization(&parent.aid)?;
+    ensure_request(
+        request
+            .decision
+            .as_deref()
+            .is_none_or(|value| value == "open"),
+        "Unknown launch decision",
+    )?;
+    let same_origin = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok())
+        == Some(registry.public_origin().as_str());
+    let mut browser = None;
+    let mut browser_cookie = None;
+    if parent.share_id.is_none() {
+        browser = crate::oauth::browser::binding(&registry, &headers)?;
+        ensure_request(
+            browser
+                .as_ref()
+                .is_none_or(|binding| binding.sub == parent.sub),
+            "Account changed; sign in again",
+        )?;
+        if browser.is_none()
+            && same_origin
+            && registry.auth.session_client(&parent)? == crate::oauth::EXPLORER_CLIENT
+        {
+            let (token, binding) =
+                registry
+                    .auth
+                    .issue_browser_binding(&parent.sub, parent_context.expires, false)?;
+            browser_cookie = Some(crate::oauth::browser::cookie(&registry, &token));
+            browser = Some(binding);
+        }
+    }
+    let explicit_approval = if request.decision.as_deref() == Some("open")
+        && parent.share_id.is_none()
+    {
+        ensure_request(
+            same_origin && registry.auth.session_client(&parent)? == crate::oauth::EXPLORER_CLIENT,
+            "A launch decision requires the registry file browser",
+        )?;
+        ensure_request(
+            request.ttl <= crate::auth::TOKEN_SECONDS,
+            "Launch decision exceeds the displayed lifetime",
+        )?;
+        if let Some(target) = &request.publish {
+            ensure_request(
+                registry
+                    .publication_access(&parent, &request.repository)?
+                    .as_ref()
+                    == Some(target),
+                "Launch decision exceeds the selected files' access",
+            )?;
+        }
+        true
+    } else {
+        false
+    };
     let expires_at = now()
         .saturating_add(request.ttl)
         .min(parent_context.expires);
@@ -509,19 +639,26 @@ async fn create(
         },
         cookie: Uuid::new_v4().simple().to_string(),
         pending_until: now().saturating_add(LAUNCH_SECONDS).min(expires_at),
+        browser: browser.map(|binding| binding.jti),
+        explicit_approval,
     };
     let mut url = reqwest::Url::parse(&app.launch_url).map_err(ApiError::bad)?;
     url.query_pairs_mut()
         .append_pair("issuer", &registry.public_origin())
         .append_pair("request_id", &id);
     let mut response = Json(json!({"protocol":PROTOCOL,"request_id":id,"launch_url":url.as_str(),"expires_at":launch.pending_until})).into_response();
-    if launch.parent.share_id.is_some() {
+    {
         response.headers_mut().insert(
             header::SET_COOKIE,
             format!(
-                "{}={}; HttpOnly; SameSite=Strict; Path=/oauth/authorize; Max-Age={}{}",
+                "{}={}; HttpOnly; SameSite={}; Path=/oauth/authorize; Max-Age={}{}",
                 launch.cookie_name(),
                 launch.cookie,
+                if launch.parent.share_id.is_some() {
+                    "Strict"
+                } else {
+                    "Lax"
+                },
                 LAUNCH_SECONDS,
                 if registry.secure_cookies() {
                     "; Secure"
@@ -532,6 +669,9 @@ async fn create(
             .parse()
             .map_err(ApiError::bad)?,
         );
+    }
+    if let Some(cookie) = browser_cookie {
+        response.headers_mut().append(header::SET_COOKIE, cookie);
     }
     let mut launches = registry.launches.lock().map_err(ApiError::bad)?;
     launches.retain(|_, launch| launch.pending_until > now());

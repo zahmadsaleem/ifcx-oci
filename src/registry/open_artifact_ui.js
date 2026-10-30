@@ -28,7 +28,7 @@ window.SubsoilOpenArtifactUI = async (container, credential, repository, referen
     try {
       const launched = await fetch('/open-artifact/launches', { method: 'POST',
         headers: { Authorization: 'Bearer ' + await credential(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...app.launches[intent], application_id: app.id, repository, reference: data.digest }),
+        body: JSON.stringify({ ...app.launches[intent], application_id: app.id, repository, reference: data.digest, decision: 'open' }),
         credentials: 'same-origin', cache: 'no-store' });
       if (!launched.ok) throw Error('Couldn’t open this app. Please try again.');
       const result = await launched.json();

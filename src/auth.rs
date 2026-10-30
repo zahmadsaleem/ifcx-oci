@@ -20,6 +20,8 @@ use uuid::Uuid;
 
 pub const TOKEN_SECONDS: u64 = 900;
 mod authorization;
+mod browser;
+pub(crate) use browser::BrowserBinding;
 mod grants;
 mod sessions;
 mod shares;

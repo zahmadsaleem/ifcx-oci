@@ -53,6 +53,7 @@ pub(super) fn form(
     let launch = pending.launch.as_ref();
     let guest = launch.is_some_and(|launch| launch.parent.share_id.is_some());
     let limited = launch.is_some();
+    let connected = guest || pending.authenticated.is_some();
     let access = launch
         .map(|launch| escape(&launch.access_description()))
         .unwrap_or_else(|| access.into());
@@ -67,7 +68,7 @@ pub(super) fn form(
         )
         .replace(
             "{{heading}}",
-            if guest {
+            if connected {
                 "Open shared files"
             } else {
                 "Sign in"
@@ -75,16 +76,19 @@ pub(super) fn form(
         )
         .replace(
             "{{continue_label}}",
-            if guest {
+            if connected {
                 "Open in application"
             } else {
                 "Sign in &amp; continue"
             },
         )
-        .replace("{{credentials_hidden}}", if guest { "hidden" } else { "" })
+        .replace(
+            "{{credentials_hidden}}",
+            if connected { "hidden" } else { "" },
+        )
         .replace(
             "{{credentials_disabled}}",
-            if guest { "disabled" } else { "" },
+            if connected { "disabled" } else { "" },
         )
         .replace(
             "{{remember_hidden}}",

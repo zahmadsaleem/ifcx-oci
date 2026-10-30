@@ -21,6 +21,7 @@ use crate::{
     registry::Registry,
 };
 
+pub(crate) mod browser;
 mod page;
 mod session;
 use page::form;
@@ -57,6 +58,8 @@ struct Authorization {
     scope: String,
     #[serde(default)]
     launch_request: Option<String>,
+    #[serde(default)]
+    prompt: Option<String>,
 }
 
 #[derive(Clone)]
@@ -65,6 +68,7 @@ struct Pending {
     cookie: String,
     expires: u64,
     launch: Option<crate::registry::open_artifact::Launch>,
+    authenticated: Option<crate::auth::BrowserBinding>,
 }
 
 struct Code {
@@ -279,6 +283,7 @@ fn scopes(value: &str) -> Result<Vec<String>> {
 
 async fn authorize(
     State(registry): State<std::sync::Arc<Registry>>,
+    headers: HeaderMap,
     Query(request): Query<Authorization>,
 ) -> Response {
     let Ok(mut store) = registry.oauth.inner.lock() else {
@@ -300,6 +305,10 @@ async fn authorize(
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b"-_".contains(&b))
         || scopes(&request.scope).is_err()
+        || request
+            .prompt
+            .as_deref()
+            .is_some_and(|value| !matches!(value, "login" | "consent"))
     {
         return error(StatusCode::BAD_REQUEST, "invalid_request");
     }
@@ -314,12 +323,61 @@ async fn authorize(
     if store.forms.len() + store.codes.len() >= MAX_PENDING {
         return error(StatusCode::TOO_MANY_REQUESTS, "temporarily_unavailable");
     }
+    let authenticated = match launch
+        .as_ref()
+        .map(|launch| launch.authenticated(&registry, &headers))
+        .transpose()
+    {
+        Ok(binding) => binding
+            .flatten()
+            .filter(|_| request.prompt.as_deref() != Some("login")),
+        Err(_) => return error(StatusCode::FORBIDDEN, "invalid_request"),
+    };
+    if let Some(binding) = authenticated.as_ref().filter(|_| {
+        launch
+            .as_ref()
+            .is_some_and(|launch| launch.explicit_approval)
+            && request.prompt.is_none()
+    }) {
+        let launch = launch.clone().expect("approved launch");
+        let clear_cookie = launch.clear_cookie(registry.secure_cookies());
+        let permissions = match registry.auth.grants(&binding.sub) {
+            Ok(permissions) => permissions,
+            Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "server_error"),
+        };
+        let launch = match registry.approve_launch(
+            launch,
+            &binding.sub,
+            &permissions,
+            !binding.password_authenticated,
+        ) {
+            Ok(launch) => launch,
+            Err(_) => return error(StatusCode::FORBIDDEN, "access_denied"),
+        };
+        let mut response = code_redirect(
+            &registry,
+            &mut store,
+            Code {
+                permissions,
+                request,
+                user: binding.sub.clone(),
+                expires: now() + CODE_SECONDS,
+                remember: false,
+                launch: Some(launch),
+            },
+        );
+        response
+            .headers_mut()
+            .append(header::SET_COOKIE, clear_cookie);
+        return response;
+    }
     let id = random();
     let pending = Pending {
         request,
         cookie: random(),
         expires: now() + FORM_SECONDS,
         launch,
+        authenticated,
     };
     let mut response = form(&id, &pending, "", "", false);
     response.headers_mut().insert(header::SET_COOKIE,
@@ -327,6 +385,22 @@ async fn authorize(
             .parse().expect("generated cookie"));
     store.forms.insert(id, pending);
     response
+}
+
+fn code_redirect(registry: &Registry, store: &mut Store, code: Code) -> Response {
+    let mut redirect = Url::parse(&code.request.redirect_uri).expect("registered redirect");
+    redirect
+        .query_pairs_mut()
+        .append_pair("state", &code.request.state);
+    if code.launch.is_some() {
+        redirect
+            .query_pairs_mut()
+            .append_pair("iss", &registry.public_origin());
+    }
+    let key = random();
+    redirect.query_pairs_mut().append_pair("code", &key);
+    store.codes.insert(key, code);
+    hardened(Redirect::to(redirect.as_str()))
 }
 
 #[derive(Deserialize)]
@@ -376,7 +450,6 @@ async fn consent(
     let launch_cookie = pending
         .launch
         .as_ref()
-        .filter(|_| guest)
         .map(|launch| launch.clear_cookie(registry.secure_cookies()));
     if guest
         && input.decision == "allow"
@@ -387,7 +460,28 @@ async fn consent(
     {
         return error(StatusCode::FORBIDDEN, "invalid_request");
     }
-    if input.decision == "allow" && !guest {
+    let authenticated = if let Some(expected) = pending
+        .authenticated
+        .as_ref()
+        .filter(|_| input.decision == "allow")
+    {
+        let actual = pending
+            .launch
+            .as_ref()
+            .and_then(|launch| launch.authenticated(&registry, &headers).ok().flatten());
+        if !actual
+            .as_ref()
+            .is_some_and(|actual| actual.jti == expected.jti && actual.sub == expected.sub)
+            || (!input.username.is_empty() && input.username != expected.sub)
+        {
+            return error(StatusCode::FORBIDDEN, "invalid_request");
+        }
+        actual
+    } else {
+        None
+    };
+    let mut browser_cookie = None;
+    if input.decision == "allow" && !guest && authenticated.is_none() {
         match registry
             .password_login(input.username.clone(), input.password)
             .await
@@ -409,6 +503,21 @@ async fn consent(
                 )
             }
         }
+        let lifetime = if input.remember_me
+            && pending.launch.is_none()
+            && pending.request.client_id != EXPLORER_CLIENT
+        {
+            crate::auth::REMEMBER_SECONDS
+        } else {
+            crate::auth::SESSION_SECONDS
+        };
+        match registry
+            .auth
+            .issue_browser_binding(&input.username, now() + lifetime, true)
+        {
+            Ok((token, _)) => browser_cookie = Some(browser::cookie(&registry, &token)),
+            Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "server_error"),
+        }
     }
     let Ok(mut store) = registry.oauth.inner.lock() else {
         return error(StatusCode::INTERNAL_SERVER_ERROR, "server_error");
@@ -417,14 +526,20 @@ async fn consent(
     let Some(pending) = store.forms.remove(&input.request_id) else {
         return error(StatusCode::BAD_REQUEST, "invalid_request");
     };
-    let mut redirect = Url::parse(&pending.request.redirect_uri).expect("registered redirect");
-    redirect
-        .query_pairs_mut()
-        .append_pair("state", &pending.request.state);
-    if input.decision == "deny" {
+    let mut response = if input.decision == "deny" {
+        if pending
+            .launch
+            .as_ref()
+            .is_some_and(|launch| registry.cancel_launch(launch).is_err())
+        {
+            return error(StatusCode::INTERNAL_SERVER_ERROR, "server_error");
+        }
+        let mut redirect = Url::parse(&pending.request.redirect_uri).expect("registered redirect");
         redirect
             .query_pairs_mut()
+            .append_pair("state", &pending.request.state)
             .append_pair("error", "access_denied");
+        hardened(Redirect::to(redirect.as_str()))
     } else {
         let user = if guest {
             pending
@@ -434,21 +549,29 @@ async fn consent(
                 .parent
                 .sub
                 .clone()
+        } else if let Some(binding) = &authenticated {
+            binding.sub.clone()
         } else {
             input.username.clone()
         };
         let mut permissions = match registry.auth.grants(&user) {
-            Ok(p) => p,
+            Ok(permissions) => permissions,
             Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "server_error"),
         };
         let launch = match pending.launch {
-            Some(launch) => match registry.approve_launch(launch, &user, &permissions) {
-                Ok(authorization) => Some(authorization),
+            Some(launch) => match registry.approve_launch(
+                launch,
+                &user,
+                &permissions,
+                authenticated
+                    .as_ref()
+                    .is_some_and(|binding| !binding.password_authenticated),
+            ) {
+                Ok(launch) => Some(launch),
                 Err(_) => return error(StatusCode::FORBIDDEN, "access_denied"),
             },
             None => None,
         };
-        // The embedded explorer can only receive artifacts, even for a publisher account.
         let explorer = pending.request.client_id == EXPLORER_CLIENT;
         if explorer {
             for grant in &mut permissions {
@@ -456,15 +579,9 @@ async fn consent(
             }
             permissions.retain(|grant| !grant.actions.is_empty());
         }
-        let code = random();
-        redirect.query_pairs_mut().append_pair("code", &code);
-        if launch.is_some() {
-            redirect
-                .query_pairs_mut()
-                .append_pair("iss", &registry.public_origin());
-        }
-        store.codes.insert(
-            code,
+        code_redirect(
+            &registry,
+            &mut store,
             Code {
                 permissions,
                 request: pending.request,
@@ -473,9 +590,8 @@ async fn consent(
                 remember: input.remember_me && !explorer,
                 launch,
             },
-        );
-    }
-    let mut response = hardened(Redirect::to(redirect.as_str()));
+        )
+    };
     response.headers_mut().insert(
         header::SET_COOKIE,
         format!(
@@ -491,6 +607,9 @@ async fn consent(
         .expect("generated cookie"),
     );
     if let Some(cookie) = launch_cookie {
+        response.headers_mut().append(header::SET_COOKIE, cookie);
+    }
+    if let Some(cookie) = browser_cookie {
         response.headers_mut().append(header::SET_COOKIE, cookie);
     }
     response

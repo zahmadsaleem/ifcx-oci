@@ -170,6 +170,20 @@ without asking for save settings. A publication allowance describes permitted
 destinations and tag patterns; the receiving application chooses the version
 name when saving.
 
+The registry menu also sends `decision: "open"` after the user selects an
+application. The server accepts this as a launch approval only from the exact
+registry origin and an active Explorer session, with an independent browser
+binding and a matching source, action, default publication allowance, and
+lifetime of at most fifteen minutes. Custom requests omit `decision` and show
+consent while reusing valid browser authentication. Account launches use a
+short-lived HttpOnly `SameSite=Lax` proof for top-level navigation; share proofs
+retain `SameSite=Strict` and their consent step. Preserve all launch response
+cookies in registry-owned clients. Browser proofs are HttpOnly and are processed
+by the registry's authentication endpoints. The receiving application continues
+to use the existing URL, PKCE exchange,
+and `open_artifact` token response. The authorization request additionally
+accepts optional `prompt=consent` or `prompt=login`.
+
 Pending launch requests expire within five minutes and are kept in memory.
 Approved sessions persist in the identity store, retain their absolute deadline,
 and renew through the existing token endpoint. See the

@@ -10,6 +10,7 @@ fn request() -> Authorization {
         code_challenge_method: "S256".into(),
         scope: "repository:project/model:pull,push".into(),
         launch_request: None,
+        prompt: None,
     }
 }
 
@@ -138,7 +139,7 @@ async fn authorization_requires_registration_s256_and_exact_redirect_without_red
     let root = tempfile::tempdir()?;
     let registry = Registry::open(root.path())?;
     assert_eq!(
-        authorize(State(registry.clone()), Query(request()))
+        authorize(State(registry.clone()), HeaderMap::new(), Query(request()))
             .await
             .status(),
         StatusCode::BAD_REQUEST
@@ -166,11 +167,11 @@ async fn authorization_requires_registration_s256_and_exact_redirect_without_red
             "response" => req.response_type = "token".into(),
             _ => unreachable!(),
         }
-        let response = authorize(State(registry.clone()), Query(req)).await;
+        let response = authorize(State(registry.clone()), HeaderMap::new(), Query(req)).await;
         assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{bad}");
         assert!(response.headers().get("location").is_none());
     }
-    let response = authorize(State(registry.clone()), Query(request())).await;
+    let response = authorize(State(registry.clone()), HeaderMap::new(), Query(request())).await;
     assert_eq!(response.status(), StatusCode::OK);
     assert!(response.headers()["set-cookie"]
         .to_str()?
@@ -196,6 +197,7 @@ async fn login_retry_escapes_input_and_does_not_expand_user_supplied_template_fi
         cookie: random(),
         expires: now() + 300,
         launch: None,
+        authenticated: None,
     };
     let input = "\"><img src=x onerror=alert(1)>{{request_id}}";
     let response = page::form(
