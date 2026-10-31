@@ -1,8 +1,8 @@
 {
-  "checked": "2026-10-27",
-  "presented_slides": 16,
+  "checked": "2026-10-31",
+  "presented_slides": 14,
   "verified_product": "AnkerDB",
-  "prototype_commit": "be6e08146eb7336fe5c061d58280188a1011c1c9",
+  "prototype_commit": "1c1c2fe469b0c930cfc4f7e78d76121fc4e55dec",
   "sources": [
     {
       "id": "S1",
@@ -54,9 +54,9 @@
     },
     {
       "id": "S11",
-      "title": "subsoil — local prototype README",
-      "url": "https://github.com/zahmadsaleem/subsoil/blob/be6e08146eb7336fe5c061d58280188a1011c1c9/README.md",
-      "supports": "Read locally at commit be6e081. Reports two-registry loopback push/copy/pull with retained digest; experimental derived IFC profile, no approval or lossless STEP round trip."
+      "title": "Subsoil — source-preserving conversion and integrity-checked exchange",
+      "url": "https://github.com/zahmadsaleem/subsoil/blob/1c1c2fe469b0c930cfc4f7e78d76121fc4e55dec/README.md",
+      "supports": "Original IFC included by default, additional derived data and geometry, generic integrity-checked pull, and explicit subsoil profile validation. Repository tests cover two-registry transfer and an independent ORAS-authored IFC release."
     },
     {
       "id": "S12",
@@ -129,8 +129,14 @@
       "title": "IANA: binary glTF media type",
       "url": "https://www.iana.org/assignments/media-types/model/gltf-binary",
       "supports": "Registered model/gltf-binary media type for GLB."
+    },
+    {
+      "id": "S24",
+      "title": "IFC Lite — proposed registry source integration",
+      "url": "https://github.com/LTplus-AG/ifc-lite/pull/8310",
+      "supports": "Proposed viewer integration for registry login, browsing versions, opening IFC, editing and publishing a new version. The public workflow with another application is a demonstration to build with participating maintainers."
     }
   ],
-  "presentation_copy": "Sixteen-slide pitch with a minimal introduction and a shared AEC package / OCI ecosystem proposal.",
+  "presentation_copy": "Fourteen-slide pitch introducing owner-controlled project files, addressing change reports, and proposing a public workflow across two apps before wider ecosystem participation.",
   "audience": "AEC tool builders and teams"
 }

@@ -12,7 +12,7 @@ from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 TITLES = (
-    "IFClite × Open CDE",
+    "Your files. Your choice of apps.",
     "Why IFClite feels approachable.",
     "Every new connection takes work.",
     "Integrate once to a common agreement.",
@@ -22,12 +22,10 @@ TITLES = (
     "Start with the IFC file we already have.",
     "A Subsoil release, carried as an OCI artifact.",
     "One interface. Many ways to run it.",
-    "Know exactly which release you received.",
-    "Changes deserve their own artifacts.",
-    "Agree on the contract. Let tools evolve.",
-    "One small agreement. Two independent tools.",
+    "Addressing Changes",
     "The delivery path has a prototype.",
-    "Could OCI become common ground?",
+    "One owner. Two apps. A useful result.",
+    "More apps. More useful project files.",
 )
 PUBLIC_FILES = (
     "index.html", "speaker-notes.html", "preview.html", "sources.json",
@@ -53,6 +51,9 @@ def digest(path):
 def retired_files(root):
     return [p for p in root.glob("new-slide-*") if p.is_file()] + [
         root / name for name in RETIRED_FILES if (root / name).exists()
+    ] + [
+        path for path in (root / "previews").glob("slide-*.png")
+        if f"previews/{path.name}" not in PUBLIC_FILES
     ]
 
 

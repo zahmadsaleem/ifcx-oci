@@ -1,8 +1,8 @@
 {
-  "slides": 16,
-  "notes": 16,
+  "slides": 14,
+  "notes": 14,
   "slideTitles": [
-    "IFClite × Open CDE",
+    "Your files. Your choice of apps.",
     "Why IFClite feels approachable.",
     "Every new connection takes work.",
     "Integrate once to a common agreement.",
@@ -12,12 +12,10 @@
     "Start with the IFC file we already have.",
     "A Subsoil release, carried as an OCI artifact.",
     "One interface. Many ways to run it.",
-    "Know exactly which release you received.",
-    "Changes deserve their own artifacts.",
-    "Agree on the contract. Let tools evolve.",
-    "One small agreement. Two independent tools.",
+    "Addressing Changes",
     "The delivery path has a prototype.",
-    "Could OCI become common ground?"
+    "One owner. Two apps. A useful result.",
+    "More apps. More useful project files."
   ],
   "presenter": "Ahmad Saleem Z",
   "footer": "IFCLite x Open CDE Proposal",
@@ -30,14 +28,14 @@
   ],
   "legacyDraftFiles": 0,
   "publicFiles": {
-    "index.html": "f3dcd3fdb8e07a16a599a032a12719215ebf750758ff22f051767c5f0a95f5f4",
-    "speaker-notes.html": "7de2a989648e1b21e3606698cfe5eb760dc0a9949830659fc44371f3a91d1681",
+    "index.html": "cffaadd64d618ecbd97ecb63f6b9821eaf0d073768bfec9223aa8bae52514cd6",
+    "speaker-notes.html": "5341e263ffa6c1a901213420764c4ff0c476c7c931836f94ba7df5fd127a340a",
     "preview.html": "cbeae1d488f88607c10ec2d3b30865d509e9849eeee55a508fd6b57dac2e28f8",
-    "sources.json": "d60831ae4308ca76466aa3ad0d97958e7357c652857f8b8779ea30518284514b",
+    "sources.json": "749426495e60233758ac2d3a6abeb3f8a2c52e09a7434191f5042789791eb791",
     "oci-subsoil-manifest.example.json": "85626da4e064af6b03ada09dbe51bcc0c6cccfe098ba57882aacd46730257b8e",
     "subsoil-profile-config.example.json": "d5130139216b28f88217976f059dc2a25e69bd6868041b6da36e0cd53fa30280",
-    "previews/overview.png": "fc2905df7f9f3395b1cba7280252e2bd67ed0af9203d9585d2434b4733964d0e",
-    "previews/slide-01.png": "387b0fac46083154c305b85388698fca84a758d973ee502ecedf0d7ad0227bab",
+    "previews/overview.png": "4836f5c52f1d250f178fb69f77360c8dbf261d4aeeae9b4785de69796e29c60f",
+    "previews/slide-01.png": "89469a4a2bd3ed0ac4c055f08c4b8b8bac52901a4426cb8033b962232e8ad7a9",
     "previews/slide-02.png": "23d6a7e9d5ee0d240ea15b94b3f97491d1b91b3bf57cf09102f72ff0d41c57ed",
     "previews/slide-03.png": "e5e1215472dfb1bb301ace3562e223fc0a755eec0e59d32ee39f265482b00a32",
     "previews/slide-04.png": "4036e37ebf199b93ce59db87445f5969bcebfc261bdef665d64e4117a2081a5a",
@@ -47,11 +45,9 @@
     "previews/slide-08.png": "3726770631f2513d74f747b2b970de5b71eb850bf21b02eafa50c50c853590d9",
     "previews/slide-09.png": "d81808c5168f9940911421fcff0099e88b1b3c6f7a2957e5c6d4b683c1d4fc94",
     "previews/slide-10.png": "9834a285416606375d9340694834accec0febf515fad2edfb15d8fc921a5e925",
-    "previews/slide-11.png": "a967506b0f12e57a3db9bbbe05bbc494de852bc857671b181e12a3cbb5d9e77c",
-    "previews/slide-12.png": "21d7405afbb17de7f6ec498048eb095cfbc3f375af7da1915fe7c4f603def2fb",
-    "previews/slide-13.png": "d9ab6aa5741cf664a4f459455e457272f994ca6d5131738e8e4c015e894a8d33",
-    "previews/slide-14.png": "36ba05ee2acc684ea6bcf3e5a0ee05af91ce425c8d29b96bd76203ce2746a731",
-    "previews/slide-15.png": "77db996b775e5299a7af73b11e05ebf06af5134d081fd9e9366547c6ec863d3e",
-    "previews/slide-16.png": "0613a2b141bd7079dde65173e41294575fd479a1d3f2ed2926cd33aad96cd7b3"
+    "previews/slide-11.png": "00fcd25679d0d363e19853b6a05e4b10a902bb93ee3bb13ac2182a18787c5abf",
+    "previews/slide-12.png": "2b45f133b893aead8b7648ff85d4f9009c4e637d0ea3df80646cb02e565cd56e",
+    "previews/slide-13.png": "af3e1d42d1e06fd66bac71555ca9789b4776daaeb868737446b8c4d5cfcd2e94",
+    "previews/slide-14.png": "dc36806a82829bfba9534ac771f2374288e6f6c61812fcd1047049a4b60b4fe7"
   }
 }
