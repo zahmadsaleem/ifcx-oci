@@ -114,6 +114,16 @@ to validate a subsoil release's required files and internal structure. Both
 conversion and receiving require a new output folder. Add changed content
 under a new version name.
 
+Public packages on registries such as GHCR can be received without signing in:
+
+```sh
+subsoil pull ghcr.io/ltplus-ag/ifc-lite-oci-fixtures:v1 --output build/public-model
+```
+
+Subsoil obtains an anonymous pull token when required and follows blob download
+redirects without forwarding registry credentials to another origin. Anonymous
+tokens remain in memory and are not saved to the sign-in file.
+
 An account that only needs to receive files uses a `pull` grant:
 
 ```sh

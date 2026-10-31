@@ -222,6 +222,22 @@ contains the manifest `digest` and an `integrity` report with downloaded
 `files` (local path, media type, digest, size, and annotations) and the checked
 `config` descriptor. `pull --layer <title>` still selects exact titled layers.
 
+Without a stored login for the registry, manifest and blob reads can answer a
+Bearer challenge through the advertised token endpoint. The client requests
+only `repository:<repository>:pull`, accepts `token` or `access_token` replies,
+and caches tokens per registry and repository in memory. A rejected anonymous
+token triggers one new exchange and retry. Anonymous tokens are never written
+to the auth file; stored logins retain their existing authentication behavior.
+
+Blob GET and HEAD requests follow at most five redirects. Token endpoints and
+redirect destinations require HTTPS, with loopback HTTP allowed only under
+`--plain-http`; an HTTPS download cannot redirect to HTTP. Registry credentials
+are sent only while the redirect chain stays on the registry's origin. After
+the first change of origin, every remaining request is unauthenticated, even
+if it returns to the registry. Redirected bytes pass the same digest and size
+checks as direct downloads. Manifest, token, listing, and upload requests do
+not follow redirects.
+
 Downloading does not validate a profile or select an IFC file from the package.
 Use `verify <directory>` to explicitly validate the supported subsoil profile,
 including its required tables and internal references. Conversion and native

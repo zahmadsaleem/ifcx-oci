@@ -4,6 +4,7 @@ use std::{
     fs,
     net::IpAddr,
     path::{Path, PathBuf},
+    sync::Mutex,
     time::Duration,
 };
 
@@ -18,6 +19,7 @@ use crate::{
 };
 
 const MAX_BLOB: u64 = 512 * 1024 * 1024;
+const MAX_BLOB_REDIRECTS: usize = 5;
 
 #[derive(Clone, Debug)]
 pub struct Reference {
@@ -132,17 +134,33 @@ struct Credentials {
 pub struct Client {
     http: reqwest::Client,
     credentials: Credentials,
+    anonymous_tokens: Mutex<BTreeMap<(String, String), String>>,
     auth_file: PathBuf,
     pub plain_http: bool,
 }
 
 #[derive(Deserialize)]
 struct TokenReply {
+    #[serde(default)]
     token: String,
+    #[serde(default)]
+    access_token: String,
     #[serde(default)]
     expires_in: u64,
     #[serde(default)]
     access: Vec<Access>,
+}
+
+impl TokenReply {
+    fn bearer(&self) -> Result<&str> {
+        let token = if self.token.is_empty() {
+            &self.access_token
+        } else {
+            &self.token
+        };
+        ensure!(!token.is_empty(), "Token endpoint returned no access token");
+        Ok(token)
+    }
 }
 
 #[derive(Serialize)]
@@ -167,6 +185,7 @@ impl Client {
                 .timeout(Duration::from_secs(300))
                 .build()?,
             credentials,
+            anonymous_tokens: Mutex::new(BTreeMap::new()),
             auth_file,
             plain_http,
         })
@@ -178,6 +197,84 @@ impl Client {
         } else {
             request
         }
+    }
+
+    async fn read(
+        &self,
+        mut request: reqwest::RequestBuilder,
+        reference: &Reference,
+    ) -> Result<reqwest::Response> {
+        // Explicitly stored credentials keep their existing login/error behavior.
+        if self.credentials.tokens.contains_key(&reference.registry) {
+            return Ok(request.send().await?);
+        }
+        let key = (reference.registry.clone(), reference.repository.clone());
+        let cached = self.anonymous_tokens.lock().unwrap().get(&key).cloned();
+        let retry = request.try_clone().context("Cannot retry registry read")?;
+        if let Some(token) = cached {
+            request = request.bearer_auth(token);
+        }
+        let response = request.send().await?;
+        if response.status() != StatusCode::UNAUTHORIZED {
+            return Ok(response);
+        }
+        let mut realm = bearer_realm(&response, self.plain_http)?;
+        realm.query_pairs_mut().append_pair(
+            "scope",
+            &format!("repository:{}:pull", reference.repository),
+        );
+        // Never send stored credentials to a challenge's token endpoint.
+        let reply: TokenReply = successful(self.http.get(realm).send().await?)
+            .await?
+            .json()
+            .await?;
+        let token = reply.bearer()?.to_string();
+        let response = retry.bearer_auth(&token).send().await?;
+        if response.status().is_success() || response.status().is_redirection() {
+            self.anonymous_tokens.lock().unwrap().insert(key, token);
+        } else {
+            self.anonymous_tokens.lock().unwrap().remove(&key);
+        }
+        Ok(response)
+    }
+
+    async fn blob_response(
+        &self,
+        method: Method,
+        reference: &Reference,
+        digest: &str,
+    ) -> Result<reqwest::Response> {
+        let request = self.request(
+            method.clone(),
+            reference.url(&format!("blobs/{digest}"))?,
+            &reference.registry,
+        );
+        let mut response = self.read(request, reference).await?;
+        let mut registry_auth = true;
+        for hop in 0..=MAX_BLOB_REDIRECTS {
+            if !matches!(response.status().as_u16(), 301 | 302 | 303 | 307 | 308) {
+                return successful(response).await;
+            }
+            ensure!(hop < MAX_BLOB_REDIRECTS, "Too many blob redirects");
+            let location = response
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .context("Blob redirect has no location")?
+                .to_str()?;
+            let url = blob_redirect_url(response.url(), location, self.plain_http)?;
+            // Once a chain leaves the registry, no later hop gets its credentials.
+            registry_auth &= url.origin() == reference.base.origin();
+            response = if registry_auth {
+                self.read(
+                    self.request(method.clone(), url, &reference.registry),
+                    reference,
+                )
+                .await?
+            } else {
+                self.http.request(method.clone(), url).send().await?
+            };
+        }
+        unreachable!()
     }
 
     pub async fn login(
@@ -193,36 +290,7 @@ impl Client {
             challenge.status() == StatusCode::UNAUTHORIZED,
             "Expected an OCI Bearer challenge from the registry"
         );
-        let header = challenge
-            .headers()
-            .get(reqwest::header::WWW_AUTHENTICATE)
-            .context("Registry did not return a Bearer challenge")?
-            .to_str()?;
-        ensure!(
-            header.starts_with("Bearer "),
-            "This client requires OCI Bearer authentication"
-        );
-        let parameter = |key: &str| -> Result<String> {
-            let needle = format!("{key}=\"");
-            let rest = header
-                .split_once(&needle)
-                .with_context(|| format!("Bearer challenge missing {key}"))?
-                .1;
-            Ok(rest
-                .split('"')
-                .next()
-                .context("Invalid Bearer challenge")?
-                .into())
-        };
-        let mut realm = Url::parse(&parameter("realm")?)?;
-        ensure!(
-            realm.scheme() == "https"
-                || (self.plain_http && realm.scheme() == "http" && is_loopback(&realm)),
-            "Refusing credentials over insecure transport"
-        );
-        realm
-            .query_pairs_mut()
-            .append_pair("service", &parameter("service")?);
+        let mut realm = bearer_realm(&challenge, self.plain_http)?;
         for scope in scopes {
             if scope == "registry:catalog:read" {
                 realm.query_pairs_mut().append_pair("scope", scope);
@@ -241,7 +309,9 @@ impl Client {
             .send()
             .await?;
         let reply: TokenReply = successful(response).await?.json().await?;
-        self.credentials.tokens.insert(registry.into(), reply.token);
+        self.credentials
+            .tokens
+            .insert(registry.into(), reply.bearer()?.into());
         let parent = self
             .auth_file
             .parent()
@@ -259,13 +329,15 @@ impl Client {
 
     pub async fn manifest(&self, reference: &Reference) -> Result<(Vec<u8>, Manifest)> {
         let response = successful(
-            self.request(
-                Method::GET,
-                reference.url(&format!("manifests/{}", reference.reference))?,
-                &reference.registry,
+            self.read(
+                self.request(
+                    Method::GET,
+                    reference.url(&format!("manifests/{}", reference.reference))?,
+                    &reference.registry,
+                )
+                .header(reqwest::header::ACCEPT, MANIFEST_TYPE),
+                reference,
             )
-            .header(reqwest::header::ACCEPT, MANIFEST_TYPE)
-            .send()
             .await?,
         )
         .await?;
@@ -381,16 +453,9 @@ impl Client {
             descriptor.size <= MAX_BLOB,
             "Blob exceeds this showcase's 512 MiB limit"
         );
-        let mut response = successful(
-            self.request(
-                Method::GET,
-                reference.url(&format!("blobs/{}", descriptor.digest))?,
-                &reference.registry,
-            )
-            .send()
-            .await?,
-        )
-        .await?;
+        let mut response = self
+            .blob_response(Method::GET, reference, &descriptor.digest)
+            .await?;
         let mut bytes = Vec::new();
         while let Some(chunk) = response.chunk().await? {
             ensure!(
@@ -413,16 +478,9 @@ impl Client {
             "Blob fetch requires a reference of the form REGISTRY/REPOSITORY@sha256:DIGEST"
         );
         let reference = Reference::parse(source, self.plain_http)?;
-        let response = successful(
-            self.request(
-                Method::HEAD,
-                reference.url(&format!("blobs/{}", reference.reference))?,
-                &reference.registry,
-            )
-            .send()
-            .await?,
-        )
-        .await?;
+        let response = self
+            .blob_response(Method::HEAD, &reference, &reference.reference)
+            .await?;
         let size = response
             .headers()
             .get(reqwest::header::CONTENT_LENGTH)
@@ -692,6 +750,107 @@ impl Client {
     }
 }
 
+fn safe_read_url(url: &Url, plain_http: bool) -> Result<()> {
+    ensure!(
+        url.host_str().is_some()
+            && url.username().is_empty()
+            && url.password().is_none()
+            && url.fragment().is_none()
+            && (url.scheme() == "https"
+                || (plain_http && url.scheme() == "http" && is_loopback(url))),
+        "Refusing an unsafe token endpoint or blob redirect; use HTTPS (or loopback HTTP with --plain-http) without URL credentials or fragments"
+    );
+    Ok(())
+}
+
+fn blob_redirect_url(current: &Url, location: &str, plain_http: bool) -> Result<Url> {
+    let url = current.join(location)?;
+    safe_read_url(&url, plain_http)?;
+    ensure!(
+        current.scheme() != "https" || url.scheme() == "https",
+        "Refusing an HTTPS blob redirect to insecure transport"
+    );
+    Ok(url)
+}
+
+fn bearer_realm(response: &reqwest::Response, plain_http: bool) -> Result<Url> {
+    let parameters = response
+        .headers()
+        .get_all(reqwest::header::WWW_AUTHENTICATE)
+        .iter()
+        .filter_map(|header| header.to_str().ok())
+        .find_map(|header| {
+            let (scheme, parameters) = header.trim().split_once(char::is_whitespace)?;
+            scheme.eq_ignore_ascii_case("Bearer").then_some(parameters)
+        })
+        .context("Registry did not return a Bearer challenge; login with the required scopes")?;
+    let mut quoted = false;
+    let mut escaped = false;
+    let parts = parameters.split(|ch| {
+        if escaped {
+            escaped = false;
+        } else if quoted && ch == '\\' {
+            escaped = true;
+        } else if ch == '"' {
+            quoted = !quoted;
+        } else if ch == ',' && !quoted {
+            return true;
+        }
+        false
+    });
+    let mut values = BTreeMap::new();
+    for part in parts {
+        let (key, value) = part.split_once('=').context("Invalid Bearer challenge")?;
+        let value = value.trim();
+        let value = if let Some(value) = value.strip_prefix('"') {
+            let value = value
+                .strip_suffix('"')
+                .context("Invalid Bearer challenge")?;
+            let mut chars = value.chars();
+            let mut decoded = String::new();
+            while let Some(ch) = chars.next() {
+                decoded.push(if ch == '\\' {
+                    chars.next().context("Invalid Bearer challenge escape")?
+                } else {
+                    ensure!(ch != '"', "Invalid Bearer challenge quote");
+                    ch
+                });
+            }
+            decoded
+        } else {
+            ensure!(
+                !value.is_empty() && !value.contains('"'),
+                "Invalid Bearer challenge"
+            );
+            value.into()
+        };
+        ensure!(
+            values
+                .insert(key.trim().to_ascii_lowercase(), value)
+                .is_none(),
+            "Duplicate Bearer challenge parameter"
+        );
+    }
+    ensure!(!quoted && !escaped, "Invalid Bearer challenge quote");
+    let mut realm = Url::parse(
+        values
+            .get("realm")
+            .context("Bearer challenge missing realm")?,
+    )?;
+    safe_read_url(&realm, plain_http)?;
+    let query: Vec<_> = realm
+        .query_pairs()
+        .filter(|(key, _)| key != "service" && key != "scope")
+        .map(|(key, value)| (key.into_owned(), value.into_owned()))
+        .collect();
+    realm.set_query(None);
+    realm.query_pairs_mut().extend_pairs(query);
+    if let Some(service) = values.get("service") {
+        realm.query_pairs_mut().append_pair("service", service);
+    }
+    Ok(realm)
+}
+
 fn next_page(response: &reqwest::Response, current: &Url) -> Result<Option<Url>> {
     let mut next = None;
     for header in response.headers().get_all(reqwest::header::LINK) {
@@ -735,4 +894,35 @@ async fn successful(response: reqwest::Response) -> Result<reqwest::Response> {
         bail!("Registry authentication failed ({status}); login again with the required scopes. {detail}");
     }
     bail!("Registry request failed ({status}): {detail}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn blob_redirects_require_safe_urls_and_never_downgrade_https() -> Result<()> {
+        let https = Url::parse("https://registry.example/v2/model/blobs/sha256:abc")?;
+        let http = Url::parse("http://127.0.0.1:5000/v2/model/blobs/sha256:abc")?;
+        assert_eq!(
+            blob_redirect_url(&https, "/storage?signature=abc", false)?.as_str(),
+            "https://registry.example/storage?signature=abc"
+        );
+        assert!(blob_redirect_url(&https, "https://cdn.example/model", false).is_ok());
+        assert!(blob_redirect_url(&http, "http://localhost:5001/model", true).is_ok());
+        for unsafe_url in [
+            "http://cdn.example/model",
+            "http://127.0.0.1:5001/model",
+            "https://user:secret@cdn.example/model",
+            "https://cdn.example/model#fragment",
+            "file:///etc/passwd",
+        ] {
+            assert!(
+                blob_redirect_url(&https, unsafe_url, true).is_err(),
+                "{unsafe_url}"
+            );
+        }
+        assert!(blob_redirect_url(&http, "/storage", false).is_err());
+        Ok(())
+    }
 }
