@@ -220,6 +220,67 @@ application revokes its own session through `/oauth/revoke`. Each registered
 application also has a separate remembered-login cookie for ordinary account
 connections; `/oauth/config?client_id=<id>` advertises its cookie name.
 
+## Public files
+
+Registry stores are private by default. A public read policy selects the
+folders and versions anyone can browse or receive without an account or share
+link. It uses the same JSON grant format as account policies, with `pull` as
+the only allowed action:
+
+```json
+{
+  "version": 1,
+  "registry": "registry.example.com",
+  "grants": [
+    {
+      "repositories": ["samples/**"],
+      "actions": ["pull"]
+    },
+    {
+      "repositories": ["project/model"],
+      "tags": ["issued"],
+      "actions": ["pull"]
+    }
+  ]
+}
+```
+
+This policy makes every published version in folders below `samples/` public,
+including future versions. In `project/model`, only `issued` and its files
+become public. Other versions stay private, including when someone knows their
+content digests. Uploaded files become available only when a public manifest
+references them. Public rules apply to any supported OCI artifact, regardless
+of its profile or media type.
+
+Save the policy as `public.json` and manage it locally:
+
+```sh
+subsoil public set --data /var/lib/subsoil public.json
+subsoil public list --data /var/lib/subsoil
+subsoil public clear --data /var/lib/subsoil
+```
+
+`set` replaces the public policy atomically and binds it to the registry host,
+as account policies do. Changes apply to a running registry; a restart is not
+required. Narrowing or clearing the policy immediately restricts access through
+tokens already issued. An empty top-level `grants` list also clears public
+access. The policy persists in the registry store, and backups include it.
+
+OCI clients receive a standard Bearer challenge and can obtain short-lived
+anonymous tokens from `/token`, scoped to the requested public repository and
+actions. A request for `pull,push` receives at most `pull`; public access never
+permits publishing, account login, session approval, or share management.
+Invalid supplied credentials are rejected rather than treated as an anonymous
+request. Anonymous catalog and tag listings include only published content
+visible under the public policy and retain the usual pagination and filtering.
+
+Visitors opening `/explore` without a session see **Public files** and can
+download files after their sizes and content fingerprints have been checked.
+Anonymous tokens stay in browser memory. **Sign in** switches to the files
+shared with an account and enables its registered application connections;
+signing out returns to public browsing. A registry without public rules keeps
+the sign-in screen. Public access does not change the configured CORS origins.
+
 ## Expiring shares
 
 A share delegates a subset of an approved account policy to anyone holding its

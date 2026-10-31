@@ -28,6 +28,7 @@ cargo fmt --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
 node --test tests/open_artifact_client.mjs
+node --test tests/explorer_client.mjs
 SUBSOIL_TEST_ORAS="$(command -v oras)" cargo test --locked --test showcase
 nix flake check --no-build
 git diff --check

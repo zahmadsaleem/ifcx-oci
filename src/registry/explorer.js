@@ -17,9 +17,11 @@
   }
 
   function signedIn(value) {
-    $('browser').hidden = $('refresh').hidden = $('sign-out').hidden = !value;
-    $('sign-in').hidden = value;
-    $('account').textContent = value ? session.subject : '';
+    const account = value && !session.public;
+    $('browser').hidden = $('refresh').hidden = !value;
+    $('sign-out').hidden = !account;
+    $('sign-in').hidden = Boolean(account);
+    $('account').textContent = account ? session.subject : value ? 'Public files' : '';
     $('breadcrumbs').hidden = !value;
   }
 
@@ -68,7 +70,15 @@
     if (session && Date.now() < session.deadline - 30000) return session.access_token;
     if (!renewing) renewing = (async () => {
       const token = sessionStorage.getItem(refreshKey);
-      if (!token) { forget(); throw Error('Sign in to see your files.'); }
+      if (!token) {
+        const response = await fetch('/token?scope=registry:catalog:read', { credentials: 'omit', cache: 'no-store', redirect: 'error' });
+        if (!response.ok) { forget(); throw Error('Sign in to see your folders and files.'); }
+        const value = await response.json();
+        session = { ...value, public: true, deadline: Date.now() + value.expires_in * 1000 };
+        tokens.clear();
+        signedIn(true);
+        return;
+      }
       await accept(await post('/oauth/token', { grant_type: 'refresh_token', client_id: client, refresh_token: token }));
     })().finally(() => { renewing = undefined; });
     await renewing;
@@ -82,9 +92,9 @@
       let scoped = tokens.get(repo);
       if (!scoped || Date.now() > scoped.deadline - 10000) {
         const response = await fetch('/token?scope=' + encodeURIComponent('repository:' + repo + ':pull'), {
-          headers: { Authorization: 'Bearer ' + access }, credentials: 'omit', cache: 'no-store'
+          headers: session.public ? {} : { Authorization: 'Bearer ' + access }, credentials: 'omit', cache: 'no-store', redirect: 'error'
         });
-        if (!response.ok) throw Error('Couldn’t open this folder. Try signing in again.');
+        if (!response.ok) throw Error('Couldn’t open this folder. Sign in to see files shared with your account.');
         const value = await response.json();
         scoped = { token: value.access_token, deadline: Date.now() + value.expires_in * 1000 };
         tokens.set(repo, scoped);
@@ -92,14 +102,14 @@
       token = scoped.token;
     }
     const response = await fetch(path, {
-      headers: { Authorization: 'Bearer ' + token }, credentials: 'omit', cache: 'no-store'
+      headers: { Authorization: 'Bearer ' + token }, credentials: 'omit', cache: 'no-store', redirect: 'error'
     });
     if (response.status === 401 && retry) {
       session.deadline = 0;
       tokens.clear();
       return request(path, repo, false);
     }
-    if (!response.ok) throw Error(response.status === 403 ? 'You don’t have access to these files. Ask your project team for help.' : response.status === 401 ? 'Please sign in again to see these files.' : 'Couldn’t load these files. Please try again.');
+    if (!response.ok) throw Error(response.status === 403 ? 'These files aren’t available with your current access. Sign in or ask your project team for help.' : response.status === 401 ? 'Please sign in again to see these files.' : 'Couldn’t load these files. Please try again.');
     return response;
   }
 
@@ -161,9 +171,11 @@
   async function renderView() {
     const ticket = ++selection;
     const current = view;
-    $('page-title').textContent = current.tag || current.repo || 'Your files';
-    $('page-caption').textContent = current.tag ? 'Files in ' + current.repo : current.repo ? 'Choose a version to see its files.' : 'Find files shared with you.';
-    document.title = (current.tag ? current.tag + ' · ' : '') + (current.repo || 'Your files') + ' · Subsoil';
+    const publicView = session?.public;
+    const title = publicView ? 'Public files' : 'Your files';
+    $('page-title').textContent = current.tag || current.repo || title;
+    $('page-caption').textContent = current.tag ? 'Files in ' + current.repo : current.repo ? 'Choose a version to see its files.' : publicView ? 'Browse files available to everyone. Sign in to see files shared with your account.' : 'Find files shared with you.';
+    document.title = (current.tag ? current.tag + ' · ' : '') + (current.repo || title) + ' · Subsoil';
     const crumbs = [link('Files', repositoryView || fresh())];
     if (current.repo) crumbs.push(document.createTextNode('/'), link(current.repo, tagsView?.repo === current.repo ? tagsView : fresh(current.repo)));
     if (current.tag) crumbs.push(document.createTextNode('/'), document.createTextNode(current.tag));
@@ -198,7 +210,7 @@
     $('page-summary').textContent = entries.length + ' ' + label + ' on this page';
     $('empty').hidden = entries.length > 0;
     $('empty-title').textContent = current.query ? 'No matching ' + displayKind : 'No ' + displayKind + ' yet';
-    $('empty-caption').textContent = current.query ? 'Try a different name.' : current.repo ? 'New versions will appear here when your team adds them.' : 'Folders shared with you will appear here.';
+    $('empty-caption').textContent = current.query ? 'Try a different name.' : publicView ? 'Public files will appear here when they’re made available.' : current.repo ? 'New versions will appear here when your team adds them.' : 'Folders shared with you will appear here.';
     if (!current.repo) {
       $('repositories').replaceChildren(...entries.map(repo => {
         const item = document.createElement('li');
@@ -284,6 +296,8 @@
 
   async function openArtifact(repo, tag, ticket) {
     $('artifact').hidden = true;
+    $('open-with').hidden = true;
+    $('open-with').replaceChildren();
     status('Loading files…');
     const { manifest, digest, pushed, publisher } = await manifestFor(repo, tag);
     if (ticket !== selection) return;
@@ -302,22 +316,46 @@
     ]));
     $('reference').textContent = location.host + '/' + repo + (digest ? '@' + digest : ':' + tag);
     $('copy').textContent = 'Copy link';
+    $('share-caption').textContent = session.public ? 'Anyone can view this public version.' : 'Share this version with someone who has access.';
     $('copy-reference').textContent = 'Copy technical reference';
     $('file-count').textContent = files.length;
     $('files').replaceChildren(...files.map((file, index) => {
       const row = document.createElement('tr');
-      const name = document.createElement('td'), type = document.createElement('td'), size = document.createElement('td');
-      name.textContent = file.annotations?.['org.opencontainers.image.title'] || (index === 0 ? 'File information' : 'File ' + index);
+      const name = document.createElement('td'), type = document.createElement('td'), size = document.createElement('td'), action = document.createElement('td');
+      const title = file.annotations?.['org.opencontainers.image.title'] || (index === 0 ? 'File information' : 'File ' + index);
+      name.textContent = title;
       type.textContent = fileType(file);
       size.textContent = bytes(file.size);
       size.className = 'size';
-      row.append(name, type, size);
+      const download = document.createElement('button');
+      download.type = 'button';
+      download.textContent = 'Download';
+      download.setAttribute('aria-label', 'Download ' + title);
+      download.onclick = () => run(async () => {
+        download.disabled = true;
+        try {
+          const response = await request(path(repo) + '/blobs/' + encodeURIComponent(file.digest), repo);
+          const content = await response.arrayBuffer();
+          if (content.byteLength !== file.size) throw Error('This file’s size doesn’t match the published version. Refresh and try again.');
+          const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', content));
+          const fingerprint = 'sha256:' + [...hash].map(value => value.toString(16).padStart(2, '0')).join('');
+          if (fingerprint !== file.digest) throw Error('This file doesn’t match the published version. Refresh and try again.');
+          const url = URL.createObjectURL(new Blob([content], { type: file.mediaType || 'application/octet-stream' }));
+          const anchor = document.createElement('a');
+          anchor.href = url;
+          anchor.download = title.split('/').at(-1);
+          anchor.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } finally { download.disabled = false; }
+      });
+      action.append(download);
+      row.append(name, type, size, action);
       return row;
     }));
     $('manifest').textContent = JSON.stringify(manifest, null, 2);
     $('artifact').hidden = false;
     status('');
-    window.SubsoilOpenArtifactUI($('open-with'), root, repo, digest || tag, () => ticket === selection)
+    if (!session.public) window.SubsoilOpenArtifactUI($('open-with'), root, repo, digest || tag, () => ticket === selection)
       .catch(error => { if (ticket === selection) status(error.message, true); });
   }
 
@@ -348,9 +386,10 @@
       if (!response.ok) throw Error('Couldn’t sign you out. Please try again.');
     }
     forget();
-    status('Signed out.');
+    try { await root(); await renderView(); }
+    catch { status('Signed out. Sign in to see files shared with your account.'); }
   });
-  $('refresh').onclick = () => { manifests.clear(); run(renderView); };
+  $('refresh').onclick = () => { manifests.clear(); if (session?.public) { session.deadline = 0; tokens.clear(); } run(async () => { await root(); await renderView(); }); };
   $('repositories-nav').onclick = event => { event.preventDefault(); navigate(fresh()); };
   $('search-form').onsubmit = event => {
     event.preventDefault();
@@ -385,8 +424,7 @@
       await accept(await post('/oauth/token', { grant_type: 'authorization_code', client_id: client,
         redirect_uri: redirect, code: query.get('code'), code_verifier: pending.verifier }));
       view = pending.view || fresh();
-    } else if (sessionStorage.getItem(refreshKey)) await root();
-    else return;
+    } else await root();
     history.replaceState({ explorer: view }, '', viewUrl(view));
     await renderView();
   });

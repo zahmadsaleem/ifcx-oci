@@ -140,7 +140,7 @@ impl Registry {
 
     pub(crate) fn can_blob(&self, claims: &Claims, repo: &str, value: &str) -> Result<bool> {
         let layers = self.auth.limits(claims)?;
-        if unrestricted(&layers, repo, "pull") {
+        if unrestricted(&layers, repo, "pull") && claims.sub != crate::auth::PUBLIC_SUBJECT {
             return Ok(true);
         }
         let mut budget = MAX_POLICY_BYTES;

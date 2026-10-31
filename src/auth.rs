@@ -19,6 +19,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 pub const TOKEN_SECONDS: u64 = 900;
+// An internal read-only principal, outside the allowed account-name alphabet.
+pub(crate) const PUBLIC_SUBJECT: &str = "@public";
 mod authorization;
 mod browser;
 pub(crate) use browser::BrowserBinding;
@@ -204,6 +206,7 @@ impl Auth {
     }
 
     pub fn authenticate(&self, name: &str, password: &str) -> Result<()> {
+        ensure!(name != PUBLIC_SUBJECT, "Invalid credentials");
         let db = self
             .db
             .lock()

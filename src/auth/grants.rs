@@ -46,6 +46,7 @@ impl Auth {
 
     pub fn add_rule(&self, user: &str, rule: &Grant) -> Result<i64> {
         policy::validate(std::slice::from_ref(rule), false)?;
+        public_actions(user, std::slice::from_ref(rule))?;
         let db = self
             .db
             .lock()
@@ -81,12 +82,19 @@ impl Auth {
     pub fn set_grants(&self, user: &str, policy: &GrantSet) -> Result<()> {
         ensure!(policy.version == 1, "Unsupported grant version");
         policy::validate(&policy.grants, false)?;
+        public_actions(user, &policy.grants)?;
         let registry = policy::registry_name(&policy.registry)?;
         let mut db = self
             .db
             .lock()
             .map_err(|_| anyhow::anyhow!("Identity store lock failed"))?;
         let tx = db.transaction()?;
+        if user == PUBLIC_SUBJECT {
+            tx.execute(
+                "INSERT OR IGNORE INTO users(name,password_hash) VALUES (?1,'')",
+                [PUBLIC_SUBJECT],
+            )?;
+        }
         ensure!(
             tx.query_row(
                 "SELECT EXISTS(SELECT 1 FROM users WHERE name=?1)",
@@ -121,6 +129,42 @@ impl Auth {
         Ok(())
     }
 
+    /// Set the read-only policy for visitors without an account.
+    pub fn set_public_grants(&self, policy: &GrantSet) -> Result<()> {
+        self.set_grants(PUBLIC_SUBJECT, policy)
+    }
+
+    pub fn public_grants(&self) -> Result<Vec<StoredGrant>> {
+        self.list_grants(PUBLIC_SUBJECT)
+    }
+
+    pub fn clear_public_grants(&self) -> Result<()> {
+        let db = self
+            .db
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Identity store lock failed"))?;
+        db.execute("DELETE FROM policy_rules WHERE user=?1", [PUBLIC_SUBJECT])?;
+        Ok(())
+    }
+
+    pub(crate) fn issue_public(&self, scopes: &[String]) -> Result<(String, Claims)> {
+        ensure!(
+            !self.public_grants()?.is_empty(),
+            "No public files are configured"
+        );
+        ensure!(
+            scopes
+                .iter()
+                .flat_map(|s| s.split_whitespace())
+                .all(|scope| {
+                    matches!(scope, "registry:catalog:read" | "registry:catalog:*")
+                        || scope.starts_with("repository:")
+                }),
+            "Public tokens support only catalog discovery and repository access"
+        );
+        self.issue(PUBLIC_SUBJECT, scopes, TOKEN_SECONDS)
+    }
+
     pub(crate) fn validate_registry(&self, registry: &str) -> Result<()> {
         let db = self
             .db
@@ -139,4 +183,12 @@ impl Auth {
         );
         Ok(())
     }
+}
+
+fn public_actions(user: &str, grants: &[Grant]) -> Result<()> {
+    ensure!(
+        user != PUBLIC_SUBJECT || grants.iter().all(|g| g.actions.iter().all(|a| a == "pull")),
+        "Public access supports only pull; publishing requires an account"
+    );
+    Ok(())
 }

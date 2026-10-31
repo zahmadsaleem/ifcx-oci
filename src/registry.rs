@@ -298,7 +298,8 @@ fn authorization(
 }
 
 fn token_reply(token: String, claims: crate::auth::Claims) -> Response {
-    let mut response=Json(json!({"token":token,"access_token":token,"expires_in":claims.exp.saturating_sub(claims.iat),"subject":claims.sub,"access":claims.access})).into_response();
+    let mut response=Json(json!({"token":token,"access_token":token,"expires_in":claims.exp.saturating_sub(claims.iat),"subject":claims.sub,"access":claims.access,
+        "authorization_type":if claims.sub == crate::auth::PUBLIC_SUBJECT {"public"} else {"access"}})).into_response();
     response.headers_mut().insert(
         header::CACHE_CONTROL,
         "no-store".parse().expect("static header"),
@@ -329,6 +330,10 @@ async fn token(
         if key == "scope" {
             scopes.push(value.into_owned());
         }
+    }
+    if !headers.contains_key(header::AUTHORIZATION) && !registry.auth.public_grants()?.is_empty() {
+        let (token, claims) = registry.auth.issue_public(&scopes).map_err(ApiError::bad)?;
+        return Ok(token_reply(token, claims));
     }
     if let Some(bearer) = headers
         .get(header::AUTHORIZATION)

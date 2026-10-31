@@ -201,14 +201,28 @@ impl Client {
 
     async fn read(
         &self,
-        mut request: reqwest::RequestBuilder,
+        request: reqwest::RequestBuilder,
         reference: &Reference,
     ) -> Result<reqwest::Response> {
+        self.read_scoped(
+            request,
+            &reference.registry,
+            &format!("repository:{}:pull", reference.repository),
+        )
+        .await
+    }
+
+    async fn read_scoped(
+        &self,
+        mut request: reqwest::RequestBuilder,
+        registry: &str,
+        scope: &str,
+    ) -> Result<reqwest::Response> {
         // Explicitly stored credentials keep their existing login/error behavior.
-        if self.credentials.tokens.contains_key(&reference.registry) {
+        if self.credentials.tokens.contains_key(registry) {
             return Ok(request.send().await?);
         }
-        let key = (reference.registry.clone(), reference.repository.clone());
+        let key = (registry.into(), scope.into());
         let cached = self.anonymous_tokens.lock().unwrap().get(&key).cloned();
         let retry = request.try_clone().context("Cannot retry registry read")?;
         if let Some(token) = cached {
@@ -219,10 +233,7 @@ impl Client {
             return Ok(response);
         }
         let mut realm = bearer_realm(&response, self.plain_http)?;
-        realm.query_pairs_mut().append_pair(
-            "scope",
-            &format!("repository:{}:pull", reference.repository),
-        );
+        realm.query_pairs_mut().append_pair("scope", scope);
         // Never send stored credentials to a challenge's token endpoint.
         let reply: TokenReply = successful(self.http.get(realm).send().await?)
             .await?
@@ -376,8 +387,14 @@ impl Client {
     /// List repositories visible to the current catalog token, across all pages.
     pub async fn repositories(&self, registry: &str, last: Option<&str>) -> Result<Vec<String>> {
         let base = registry_url(registry, self.plain_http)?;
-        self.list(registry, base.join("v2/_catalog")?, "repositories", last)
-            .await
+        self.list(
+            registry,
+            base.join("v2/_catalog")?,
+            "registry:catalog:read",
+            "repositories",
+            last,
+        )
+        .await
     }
 
     /// List tags of a bare REGISTRY/REPOSITORY name, across all pages.
@@ -386,6 +403,7 @@ impl Client {
         self.list(
             &reference.registry,
             reference.url("tags/list")?,
+            &format!("repository:{}:pull", reference.repository),
             "tags",
             last,
         )
@@ -396,6 +414,7 @@ impl Client {
         &self,
         registry: &str,
         mut url: Url,
+        scope: &str,
         field: &str,
         last: Option<&str>,
     ) -> Result<Vec<String>> {
@@ -412,9 +431,12 @@ impl Client {
                 "Registry returned a pagination loop"
             );
             let response = successful(
-                self.request(Method::GET, url.clone(), registry)
-                    .send()
-                    .await?,
+                self.read_scoped(
+                    self.request(Method::GET, url.clone(), registry),
+                    registry,
+                    scope,
+                )
+                .await?,
             )
             .await?;
             let next = next_page(&response, &url)?;

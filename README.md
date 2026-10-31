@@ -136,6 +136,22 @@ Command-line sign-in expires after 15 minutes; run `login` again when needed.
 After signing in to two stores, use `subsoil copy SOURCE DESTINATION` to copy a
 version between them.
 
+## Host public files
+
+To host files anyone can receive, configure a public read policy. It uses the
+same folder and version selectors as account policies and accepts only `pull`:
+
+```sh
+subsoil public set --data build/company-a public.json
+subsoil public list --data build/company-a
+```
+
+Visitors can browse the selected files at `/explore` or pull them with an OCI
+client without signing in. Downloads in the Files browser check the file's size
+and content fingerprint. Publishing still requires an account. See
+[public files](docs/AUTHORIZATION.md#public-files) for a policy example and how
+to remove access.
+
 ## Set up a team or connect an app
 
 The [deployment guide](docs/DEPLOYMENT.md) explains shared hosting, accounts, and

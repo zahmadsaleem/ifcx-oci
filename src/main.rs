@@ -29,7 +29,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Serve a persistent, authenticated single-instance OCI registry.
+    /// Serve a persistent single-instance OCI registry with optional public read access.
     Serve {
         #[arg(long, default_value = "build/registry")]
         data: PathBuf,
@@ -58,6 +58,11 @@ enum Command {
     User {
         #[command(subcommand)]
         command: UserCommand,
+    },
+    /// Choose the folders and versions visitors can read without signing in.
+    Public {
+        #[command(subcommand)]
+        command: PublicCommand,
     },
     /// Manage independent, expiring share credentials in a local registry store.
     Share {
@@ -214,6 +219,26 @@ enum UserCommand {
         data: PathBuf,
         username: String,
         grant: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum PublicCommand {
+    /// Replace public read access with a registry-bound JSON grant policy.
+    Set {
+        #[arg(long)]
+        data: PathBuf,
+        file: PathBuf,
+    },
+    /// List the public read rules configured in this registry store.
+    List {
+        #[arg(long)]
+        data: PathBuf,
+    },
+    /// Remove all public read access, including access through issued tokens.
+    Clear {
+        #[arg(long)]
+        data: PathBuf,
     },
 }
 
@@ -383,6 +408,20 @@ async fn main() -> Result<()> {
             );
             registry::serve_with_shutdown(listener, registry, shutdown_signal()?).await?;
         }
+        Command::Public { command } => match command {
+            PublicCommand::Set { data, file } => {
+                let policy = subsoil::policy::GrantSet::parse(&fs::read(file)?)?;
+                Registry::open(data)?.auth.set_public_grants(&policy)?;
+                print(&policy)?;
+            }
+            PublicCommand::List { data } => {
+                print(&Registry::open(data)?.auth.public_grants()?)?;
+            }
+            PublicCommand::Clear { data } => {
+                Registry::open(data)?.auth.clear_public_grants()?;
+                print(&serde_json::json!({"public_access":false}))?;
+            }
+        },
         Command::Share { command } => match command {
             ShareCommand::Create {
                 data,
