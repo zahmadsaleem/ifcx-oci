@@ -204,6 +204,29 @@ async fn interop(
             &root.join("rust-read-oras"),
         )
         .await?;
+    release::verify(&root.join("rust-read-oras"))?;
+    // Independently publish an IFC-only release with a foreign artifact type.
+    let foreign = format!("{a}/project/oras:source-ifc");
+    required(oras_run(
+        binary,
+        &credentials,
+        &[
+            "push".into(),
+            "--plain-http".into(),
+            "--artifact-type".into(),
+            "application/vnd.example.ifc-release.v1".into(),
+            foreign.clone(),
+            "source/model.ifc:application/x-step".into(),
+        ],
+        None,
+        &release,
+    )?)?;
+    let foreign_output = root.join("rust-read-foreign-ifc");
+    client.pull(&foreign, &foreign_output).await?;
+    ensure!(
+        fs::read(foreign_output.join("source/model.ifc"))? == IFC.as_bytes(),
+        "IFC bytes changed during independent-client delivery"
+    );
     let reader_config = config.path().join("reader.json");
     required(oras_run(
         binary,
@@ -259,7 +282,7 @@ async fn interop(
         "ORAS reader unexpectedly pushed an artifact"
     );
     Ok(
-        json!({"client":"ORAS","authenticatedPush":true,"crossRegistryCopy":true,"pullAndVerify":true,"rustReadOrasArtifact":true,"readerPushDenied":true,"manifestDigestPreserved":digest}),
+        json!({"client":"ORAS","authenticatedPush":true,"crossRegistryCopy":true,"pullAndVerify":true,"rustReadOrasArtifact":true,"rustReadForeignIfc":true,"readerPushDenied":true,"manifestDigestPreserved":digest}),
     )
 }
 
@@ -271,7 +294,7 @@ pub async fn run(output: &Path, oras: Option<&Path>) -> Result<Value> {
     let source = output.join("showcase.ifc");
     fs::write(&source, IFC)?;
     let release = output.join("release");
-    let conversion = release::convert(&source, &release, "showcase", false)?;
+    let conversion = release::convert(&source, &release, "showcase", true)?;
     ensure!(
         conversion.geometry["triangles"].as_u64().unwrap_or(0) > 0,
         "Demo did not tessellate geometry"
@@ -348,12 +371,13 @@ pub async fn run(output: &Path, oras: Option<&Path>) -> Result<Value> {
             &format!("{host_b}/deliver/model:issued"),
         )
         .await?;
-    let (pulled, verification) = writer
+    let (pulled, _) = writer
         .pull(
             &format!("{host_b}/deliver/model@{copied}"),
             &output.join("received"),
         )
         .await?;
+    let verification = release::verify(&output.join("received"))?;
     ensure!(
         digest == copied && digest == pulled,
         "Manifest digest changed during delivery"

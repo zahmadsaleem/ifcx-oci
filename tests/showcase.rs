@@ -18,6 +18,7 @@ async fn actual_two_registry_showcase_and_scope_denials() -> Result<()> {
     assert_eq!(report["authorization"]["expiredTokenDenied"], true);
     if oras.is_some() {
         assert_eq!(report["independentClient"]["authenticatedPush"], true);
+        assert_eq!(report["independentClient"]["rustReadForeignIfc"], true);
     }
     Ok(())
 }

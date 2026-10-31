@@ -108,8 +108,11 @@ subsoil --plain-http pull 127.0.0.1:5000/project/model@DIGEST \
   --output build/received
 ```
 
-Receiving also checks the files. Both conversion and receiving require a new
-output folder. Add changed content under a new version name.
+Receiving checks each file's size and content fingerprint, independently of
+the release's profile. Run `subsoil verify build/received` when you also want
+to validate a subsoil release's required files and internal structure. Both
+conversion and receiving require a new output folder. Add changed content
+under a new version name.
 
 An account that only needs to receive files uses a `pull` grant:
 
@@ -132,9 +135,11 @@ explains the file format and application connection.
 
 Subsoil's model conversion is experimental and is not buildingSMART approved.
 It does not preserve every authoring detail needed to recreate the original IFC
-file. Include the source file with `convert --include-source` when you want it
-in the shared version. Verification checks file integrity and internal links;
-your team still decides whether a model is suitable for its project.
+file. Conversion includes the original IFC in the shared version by default;
+use `convert --omit-source` when you only want the derived files.
+`--include-source` remains accepted for existing commands. Verification checks
+file integrity and internal links; your team still decides whether a model is
+suitable for its project.
 
 The [brand guide](docs/BRANDING.md) covers the logo and interface language.
 

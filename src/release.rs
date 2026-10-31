@@ -23,6 +23,9 @@ use sha2::{Digest, Sha256};
 
 pub const PROFILE: &str = "urn:subsoil:profile:0.2";
 pub const ARTIFACT_TYPE: &str = "application/vnd.subsoil.model.v0.2";
+pub const IFC_PROFILE_KEY: &str = "org.buildingsmart.ifc.profile";
+pub const IFC_SCHEMA_KEY: &str = "org.buildingsmart.ifc.schema";
+pub const IFC_RELEASE_PROFILE: &str = "ifc-release/0";
 pub const IFCLITE_REV: &str = "9d154898de31fe91eb46f0200f2b3634c8c592f1";
 pub const PARQUET_TYPE: &str = "application/vnd.apache.parquet";
 pub const TABLES: &[&str] = &[
@@ -512,7 +515,12 @@ pub fn convert(
         let schema = table_schema(name).expect("known schema");
         (*name, schema.fields().iter().map(|f| json!({"name":f.name(), "type":f.data_type().to_string(), "nullable":f.is_nullable()})).collect::<Vec<_>>())
     }).collect();
-    let profile = json!({"profile":PROFILE, "sourceSchema":source_schema, "status":"experimental; not buildingSMART approved", "ifcAdapter":{"name":"IFClite", "revision":IFCLITE_REV}, "tables":schemas, "identifiers":"model ID plus source-relative STEP ID; not stable across source renumbering", "attributes":"ordered STEP forward-attribute vector in source-schema order; tagged integers, enums, typed values, references, binary literals and derived values", "geometry":"GLB 2.0 scene in metres, Y-up; use the complete scene/node transforms", "properties":"IFClite extracted values and candidate lists, with value kind and optional IFC datatype; units remain source-defined", "preservation":"derived analytical/rendering profile, not a lossless STEP round trip; source IFC included only when requested"});
+    let preservation = if include_source {
+        "derived analytical/rendering profile, not a lossless STEP round trip; original source IFC included"
+    } else {
+        "derived analytical/rendering profile, not a lossless STEP round trip; original source IFC omitted"
+    };
+    let profile = json!({"profile":PROFILE, "sourceSchema":source_schema, "status":"experimental; not buildingSMART approved", "ifcAdapter":{"name":"IFClite", "revision":IFCLITE_REV}, "tables":schemas, "identifiers":"model ID plus source-relative STEP ID; not stable across source renumbering", "attributes":"ordered STEP forward-attribute vector in source-schema order; tagged integers, enums, typed values, references, binary literals and derived values", "geometry":"GLB 2.0 scene in metres, Y-up; use the complete scene/node transforms", "properties":"IFClite extracted values and candidate lists, with value kind and optional IFC datatype; units remain source-defined", "preservation":preservation});
     put(root, "schema/profile.json", &encoded(&profile)?)?;
     files.push(file_entry(
         root,

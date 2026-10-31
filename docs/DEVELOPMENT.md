@@ -205,8 +205,44 @@ folder each time.
 ## Model format and transfer
 
 Conversion reads an IFC model and produces typed data tables, geometry, and a
-JSON release index. An OCI manifest describes these files for storage and
-transfer. A profile defines how a receiving application interprets them.
+JSON release index. It includes the original IFC at `source/model.ifc` by
+default; `convert --omit-source` produces only the derived files.
+`convert --include-source` is still accepted for existing integrations.
+An OCI manifest describes these files for storage and transfer. A profile
+defines how a receiving application interprets them.
+
+`pull` downloads every layer of an OCI image manifest, regardless of its
+`artifactType`, config media type, or profile annotations. It verifies each
+layer's digest and size and also fetches and integrity-checks the config.
+The config is not written as a release file. Layers retain their
+`org.opencontainers.image.title` paths; untitled layers use
+`blobs/sha256/<digest-hex>`. Unsafe or duplicate destination paths are rejected.
+The output folder is committed only after all checks succeed. The JSON result
+contains the manifest `digest` and an `integrity` report with downloaded
+`files` (local path, media type, digest, size, and annotations) and the checked
+`config` descriptor. `pull --layer <title>` still selects exact titled layers.
+
+Downloading does not validate a profile or select an IFC file from the package.
+Use `verify <directory>` to explicitly validate the supported subsoil profile,
+including its required tables and internal references. Conversion and native
+publishing also use that validator to check their output and input respectively.
+
+When publishing a release containing exactly one original IFC layer with
+`application/x-step` and a `.ifc` title, subsoil adds these provisional
+annotations to both the manifest and that layer:
+
+```json
+{
+  "org.buildingsmart.ifc.profile": "ifc-release/0",
+  "org.buildingsmart.ifc.schema": "IFC4"
+}
+```
+
+The schema value comes from the source model metadata; `IFC4` is an example.
+These keys are an experimental interoperability convention, not a buildingSMART
+standard, and can be superseded by future standardized names. Releases without
+the original IFC do not carry these annotations. The subsoil artifact type and
+its derived files retain their own format contract.
 
 ```mermaid
 flowchart LR

@@ -7,9 +7,9 @@ use std::{
     process::{Command, Output},
 };
 use subsoil::{
-    client::{Client, Descriptor, Manifest},
+    client::{Client, Descriptor, Manifest, Reference},
     registry::{self, Registry},
-    release::{digest, digest_hex, ARTIFACT_TYPE},
+    release::{self, digest, digest_hex, ARTIFACT_TYPE},
 };
 use tokio::task::JoinHandle;
 
@@ -75,29 +75,7 @@ impl Fixture {
             },
         };
         for bytes in [b"{}".as_slice(), GEOMETRY, PROPERTIES, b"index"] {
-            let start = fixture
-                .http
-                .post(format!(
-                    "http://{}/v2/project/model/blobs/uploads/",
-                    fixture.host
-                ))
-                .bearer_auth(&fixture.token)
-                .send()
-                .await?
-                .error_for_status()?;
-            fixture
-                .http
-                .put(format!(
-                    "http://{}{}",
-                    fixture.host,
-                    start.headers()["location"].to_str()?
-                ))
-                .bearer_auth(&fixture.token)
-                .query(&[("digest", digest(bytes))])
-                .body(bytes.to_vec())
-                .send()
-                .await?
-                .error_for_status()?;
+            fixture.upload(bytes).await?;
         }
         fixture.publish().await?;
         // Subsequent downloads use a token with pull permission only.
@@ -115,6 +93,32 @@ impl Fixture {
 
     fn source(&self) -> String {
         format!("{}/project/model:issued", self.host)
+    }
+
+    async fn upload(&self, bytes: &[u8]) -> Result<()> {
+        let start = self
+            .http
+            .post(format!(
+                "http://{}/v2/project/model/blobs/uploads/",
+                self.host
+            ))
+            .bearer_auth(&self.token)
+            .send()
+            .await?
+            .error_for_status()?;
+        self.http
+            .put(format!(
+                "http://{}{}",
+                self.host,
+                start.headers()["location"].to_str()?
+            ))
+            .bearer_auth(&self.token)
+            .query(&[("digest", digest(bytes))])
+            .body(bytes.to_vec())
+            .send()
+            .await?
+            .error_for_status()?;
+        Ok(())
     }
 
     fn blob_path(&self, descriptor: &Descriptor) -> Result<PathBuf> {
@@ -186,6 +190,245 @@ fn failure(output: &Output, message: &str) {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(output.stdout.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn generic_pull_downloads_foreign_and_invalid_native_releases_by_integrity() -> Result<()> {
+    let mut fixture = Fixture::new().await?;
+    fixture.manifest.config.media_type = "application/vnd.example.config".into();
+    for (number, artifact_type) in [
+        None,
+        Some("application/vnd.ifc-lite.ifc.v1"),
+        Some(ARTIFACT_TYPE),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        fixture.manifest.artifact_type = artifact_type.map(str::to_string);
+        let source = fixture.publish_revision().await?;
+        let output = format!("generic-{number}");
+        let result = fixture.cli(&["pull", &source, "--output", &output])?;
+        success(&result);
+        let report: Value = serde_json::from_slice(&result.stdout)?;
+        assert_eq!(report["digest"], source.split_once('@').unwrap().1);
+        assert_eq!(report["integrity"]["files"].as_array().unwrap().len(), 3);
+        assert_eq!(report["integrity"]["config"]["digest"], digest(b"{}"));
+        assert!(report.get("verification").is_none());
+        for (path, bytes) in [
+            ("geometry/model.glb", GEOMETRY),
+            ("data/properties.parquet", PROPERTIES),
+            ("index.json", b"index".as_slice()),
+        ] {
+            assert_eq!(
+                fs::read(fixture.temp.path().join(&output).join(path))?,
+                bytes
+            );
+            let file = report["integrity"]["files"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|file| file["path"] == path)
+                .unwrap();
+            assert_eq!(file["digest"], digest(bytes));
+            assert_eq!(file["size"], bytes.len());
+        }
+        // Downloaded bytes are intact, but this is not a valid subsoil package.
+        assert!(!fixture.cli(&["verify", &output])?.status.success());
+        failure(
+            &fixture.cli(&["pull", &source, "--output", &output])?,
+            "must not already exist",
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn generic_pull_reads_ifc_lite_and_oras_layouts_and_untitled_layers() -> Result<()> {
+    let mut fixture = Fixture::new().await?;
+    let ifc = subsoil::demo::IFC.as_bytes();
+    fixture.upload(ifc).await?;
+    let mut layer = descriptor(ifc, "model.ifc");
+    layer.media_type = "application/x-step".into();
+    fixture.manifest.layers = vec![layer];
+    for (name, artifact_type) in [
+        ("oras", None),
+        ("ifc-lite", Some("application/vnd.ifc-lite.ifc.v1")),
+    ] {
+        fixture.manifest.artifact_type = artifact_type.map(str::to_string);
+        let source = fixture.publish_revision().await?;
+        success(&fixture.cli(&["pull", &source, "--output", name])?);
+        assert_eq!(
+            fs::read(fixture.temp.path().join(name).join("model.ifc"))?,
+            ifc
+        );
+    }
+    fixture.manifest.layers[0].annotations.clear();
+    fixture
+        .manifest
+        .annotations
+        .insert(release::IFC_PROFILE_KEY.into(), "ifc-release/999".into());
+    // An additional, unfamiliar payload is downloaded without IFC interpretation.
+    fixture
+        .manifest
+        .layers
+        .push(descriptor(GEOMETRY, "preview.bin"));
+    let source = fixture.publish_revision().await?;
+    let output = fixture.temp.path().join("untitled");
+    let (_, report) = fixture.client.pull(&source, &output).await?;
+    let path = format!("blobs/sha256/{}", digest_hex(&digest(ifc))?);
+    assert_eq!(report.files[0].path, path);
+    assert_eq!(fs::read(output.join(path))?, ifc);
+    assert_eq!(fs::read(output.join("preview.bin"))?, GEOMETRY);
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn generic_pull_rejects_corrupt_layers_and_config_without_partial_output() -> Result<()> {
+    let fixture = Fixture::new().await?;
+    let source = fixture.source();
+    for (descriptor, original) in [
+        (&fixture.manifest.layers[0], GEOMETRY),
+        (&fixture.manifest.config, b"{}".as_slice()),
+    ] {
+        let blob = fixture.blob_path(descriptor)?;
+        for corrupt in [
+            vec![b'x'; original.len()],
+            b"x".to_vec(),
+            vec![b'x'; original.len() + 1],
+        ] {
+            fs::write(&blob, corrupt)?;
+            let output = fixture.temp.path().join("failed");
+            assert!(fixture.client.pull(&source, &output).await.is_err());
+            assert!(!output.exists());
+            assert!(!fs::read_dir(fixture.temp.path())?.any(|entry| entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".subsoil-pull-")));
+        }
+        fs::write(blob, original)?;
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn conversion_defaults_and_publishing_preserve_source_and_annotate_shared_profile(
+) -> Result<()> {
+    let mut fixture = Fixture::new().await?;
+    fixture
+        .client
+        .login(
+            &fixture.host,
+            "reader",
+            "fetch-test-password",
+            &["project/model:pull,push".into()],
+        )
+        .await?;
+    fs::write(fixture.temp.path().join("model.ifc"), subsoil::demo::IFC)?;
+    for (name, flag, schema) in [
+        ("default", None, "IFC4"),
+        ("legacy", Some("--include-source"), "IFC4"),
+        ("omitted", Some("--omit-source"), "IFC4"),
+        ("ifc4x3", None, "IFC4X3_ADD2"),
+    ] {
+        let source_bytes = subsoil::demo::IFC.replace(
+            "FILE_SCHEMA(('IFC4'));",
+            &format!("FILE_SCHEMA(('{schema}'));"),
+        );
+        fs::write(fixture.temp.path().join("model.ifc"), &source_bytes)?;
+        let mut arguments = vec!["convert", "model.ifc", "--output", name];
+        if let Some(flag) = flag {
+            arguments.push(flag);
+        }
+        success(&fixture.cli(&arguments)?);
+        success(&fixture.cli(&["verify", name])?);
+        let included = flag != Some("--omit-source");
+        let root = fixture.temp.path().join(name);
+        assert_eq!(root.join("source/model.ifc").exists(), included);
+        if included {
+            assert_eq!(
+                fs::read(root.join("source/model.ifc"))?,
+                source_bytes.as_bytes()
+            );
+        }
+        let destination = format!("{}/project/model:{name}", fixture.host);
+        success(&fixture.cli(&["push", name, &destination])?);
+        let (_, manifest) = fixture
+            .client
+            .manifest(&Reference::parse(&destination, true)?)
+            .await?;
+        assert_eq!(manifest.artifact_type.as_deref(), Some(ARTIFACT_TYPE));
+        assert_eq!(
+            manifest.annotations.contains_key(release::IFC_PROFILE_KEY),
+            included
+        );
+        assert_eq!(
+            manifest.annotations.contains_key(release::IFC_SCHEMA_KEY),
+            included
+        );
+        if included {
+            assert_eq!(
+                manifest.annotations[release::IFC_PROFILE_KEY],
+                "ifc-release/0"
+            );
+            assert_eq!(manifest.annotations[release::IFC_SCHEMA_KEY], schema);
+        }
+        for layer in &manifest.layers {
+            let source = layer.annotations["org.opencontainers.image.title"] == "source/model.ifc";
+            assert_eq!(
+                layer.annotations.contains_key(release::IFC_PROFILE_KEY),
+                source
+            );
+            if source {
+                assert_eq!(layer.annotations[release::IFC_PROFILE_KEY], "ifc-release/0");
+                assert_eq!(layer.annotations[release::IFC_SCHEMA_KEY], schema);
+                assert_eq!(layer.media_type, "application/x-step");
+                assert_eq!(layer.digest, digest(source_bytes.as_bytes()));
+            }
+        }
+        let received = format!("received-{name}");
+        success(&fixture.cli(&["pull", &destination, "--output", &received])?);
+        success(&fixture.cli(&["verify", &received])?);
+    }
+    // A second .ifc-titled file prevents claiming the single-IFC shared profile.
+    let root = fixture.temp.path().join("default");
+    let mut index = release::read_index(&root)?;
+    let mut extra = index
+        .files
+        .iter()
+        .find(|file| file.path == "source/model.ifc")
+        .unwrap()
+        .clone();
+    extra.path = "extra.ifc".into();
+    extra.media_type = "application/octet-stream".into();
+    fs::copy(root.join("source/model.ifc"), root.join(&extra.path))?;
+    index.files.push(extra);
+    fs::write(root.join("index.json"), serde_json::to_vec(&index)?)?;
+    success(&fixture.cli(&["verify", "default"])?);
+    let destination = format!("{}/project/model:ambiguous-ifc", fixture.host);
+    fixture.client.push(&root, &destination).await?;
+    let (_, manifest) = fixture
+        .client
+        .manifest(&Reference::parse(&destination, true)?)
+        .await?;
+    assert!(!manifest.annotations.contains_key(release::IFC_PROFILE_KEY));
+    assert!(!manifest.annotations.contains_key(release::IFC_SCHEMA_KEY));
+    assert!(manifest
+        .layers
+        .iter()
+        .all(|layer| !layer.annotations.contains_key(release::IFC_PROFILE_KEY)));
+    failure(
+        &fixture.cli(&[
+            "convert",
+            "model.ifc",
+            "--output",
+            "conflict",
+            "--include-source",
+            "--omit-source",
+        ])?,
+        "cannot be used with",
+    );
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -315,6 +558,14 @@ async fn selection_errors_and_corruption_leave_no_partial_output() -> Result<()>
         .unwrap_err()
         .to_string()
         .contains("Ambiguous layer title"));
+    assert!(fixture
+        .client
+        .pull(&source, &output)
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("Duplicate artifact layer title"));
+    assert!(!output.exists());
     fixture.manifest.layers.pop();
     for title in ["../escape", "/absolute", "data\\escape", "data/../escape"] {
         fixture.manifest.layers[0]
@@ -326,6 +577,8 @@ async fn selection_errors_and_corruption_leave_no_partial_output() -> Result<()>
             .pull_layers(&source, &output, &[title.into()])
             .await
             .is_err());
+        assert!(!output.exists());
+        assert!(fixture.client.pull(&source, &output).await.is_err());
         assert!(!output.exists());
     }
     fixture.manifest.layers[0].annotations.insert(

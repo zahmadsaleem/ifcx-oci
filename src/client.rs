@@ -109,6 +109,21 @@ pub struct Manifest {
     pub annotations: BTreeMap<String, String>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadedFile {
+    pub path: String,
+    #[serde(flatten)]
+    pub descriptor: Descriptor,
+}
+
+/// Successfully downloaded layers and the integrity-checked config descriptor.
+#[derive(Debug, Serialize)]
+pub struct PullReport {
+    pub files: Vec<DownloadedFile>,
+    pub config: Descriptor,
+}
+
 #[derive(Default, Serialize, Deserialize)]
 struct Credentials {
     tokens: BTreeMap<String, String>,
@@ -510,6 +525,25 @@ impl Client {
     pub async fn push(&self, root: &Path, destination: &str) -> Result<String> {
         release::verify(root)?;
         let index = release::read_index(root)?;
+        let ifc_files: Vec<_> = index
+            .files
+            .iter()
+            .filter(|file| file.media_type == "application/x-step" || file.path.ends_with(".ifc"))
+            .collect();
+        let ifc_source = ifc_files.first().filter(|file| {
+            ifc_files.len() == 1
+                && file.media_type == "application/x-step"
+                && file.path.ends_with(".ifc")
+                && file.digest == index.source_digest
+        });
+        let mut ifc_annotations = BTreeMap::new();
+        if ifc_source.is_some() {
+            ifc_annotations.insert(
+                release::IFC_PROFILE_KEY.into(),
+                release::IFC_RELEASE_PROFILE.into(),
+            );
+            ifc_annotations.insert(release::IFC_SCHEMA_KEY.into(), index.source_schema.clone());
+        }
         let target = Reference::parse(destination, self.plain_http)?;
         let config_bytes = b"{}".to_vec();
         let config = Descriptor {
@@ -529,57 +563,54 @@ impl Client {
         );
         for (path, media_type) in files {
             let bytes = fs::read(checked_path(root, &path)?)?;
+            let mut annotations =
+                BTreeMap::from([("org.opencontainers.image.title".into(), path.clone())]);
+            if ifc_source.is_some_and(|file| file.path == path) {
+                annotations.extend(ifc_annotations.clone());
+            }
             let descriptor = Descriptor {
                 media_type,
                 digest: digest(&bytes),
                 size: bytes.len() as u64,
-                annotations: BTreeMap::from([("org.opencontainers.image.title".into(), path)]),
+                annotations,
             };
             self.upload(&target, &descriptor, bytes).await?;
             layers.push(descriptor);
         }
+        let mut annotations = BTreeMap::from([(
+            "org.opencontainers.image.title".into(),
+            "IFC model release".into(),
+        )]);
+        annotations.extend(ifc_annotations);
         let manifest = Manifest {
             schema_version: 2,
             media_type: MANIFEST_TYPE.into(),
             artifact_type: Some(ARTIFACT_TYPE.into()),
             config,
             layers,
-            annotations: BTreeMap::from([(
-                "org.opencontainers.image.title".into(),
-                "IFC model release".into(),
-            )]),
+            annotations,
         };
         self.publish(&target, serde_json::to_vec(&manifest)?).await
     }
 
-    pub async fn pull(
-        &self,
-        source: &str,
-        output: &Path,
-    ) -> Result<(String, release::Verification)> {
+    /// Download all layers and check integrity without interpreting an artifact profile.
+    pub async fn pull(&self, source: &str, output: &Path) -> Result<(String, PullReport)> {
         ensure!(!output.exists(), "Pull output must not already exist");
         let reference = Reference::parse(source, self.plain_http)?;
         let (raw, manifest) = self.manifest(&reference).await?;
-        ensure!(
-            manifest.artifact_type.as_deref() == Some(ARTIFACT_TYPE),
-            "Pull expects the supported IFC release artifact type"
-        );
-        let (stage, paths) = self
+        let (stage, files) = self
             .download_layers(&reference, output, &manifest.layers)
             .await?;
         self.blob(&reference, &manifest.config).await?;
-        let index = release::read_index(stage.path())?;
-        let expected: BTreeSet<_> = std::iter::once("index.json".to_string())
-            .chain(index.files.iter().map(|f| f.path.clone()))
-            .collect();
-        ensure!(
-            paths == expected,
-            "Manifest files do not match the release index"
-        );
-        let report = release::verify(stage.path())?;
         ensure!(!output.exists(), "Pull output appeared during transfer");
         fs::rename(stage.path(), output)?;
-        Ok((digest(&raw), report))
+        Ok((
+            digest(&raw),
+            PullReport {
+                files,
+                config: manifest.config,
+            },
+        ))
     }
 
     /// Pull exact layer titles and check their bytes without verifying a full release.
@@ -616,7 +647,7 @@ impl Client {
         reference: &Reference,
         output: &Path,
         layers: &[Descriptor],
-    ) -> Result<(tempfile::TempDir, BTreeSet<String>)> {
+    ) -> Result<(tempfile::TempDir, Vec<DownloadedFile>)> {
         let parent = output
             .parent()
             .filter(|p| !p.as_os_str().is_empty())
@@ -629,19 +660,24 @@ impl Client {
         // Validate all destination paths before downloading any payloads.
         let mut targets = Vec::new();
         for descriptor in layers {
-            let path = descriptor
-                .annotations
-                .get("org.opencontainers.image.title")
-                .context("Artifact layer needs a file title")?;
+            let path = match descriptor.annotations.get("org.opencontainers.image.title") {
+                Some(title) => title.clone(),
+                None => format!("blobs/sha256/{}", digest_hex(&descriptor.digest)?),
+            };
             ensure!(paths.insert(path.clone()), "Duplicate artifact layer title");
-            targets.push(checked_path(stage.path(), path)?);
+            targets.push(checked_path(stage.path(), &path)?);
         }
+        let mut files = Vec::new();
         for (descriptor, target) in layers.iter().zip(targets) {
             let bytes = self.blob(reference, descriptor).await?;
             fs::create_dir_all(target.parent().context("Missing payload parent")?)?;
-            fs::write(target, bytes)?;
+            fs::write(&target, bytes)?;
+            files.push(DownloadedFile {
+                path: target.strip_prefix(stage.path())?.to_string_lossy().into(),
+                descriptor: descriptor.clone(),
+            });
         }
-        Ok((stage, paths))
+        Ok((stage, files))
     }
 
     pub async fn copy(&self, source: &str, destination: &str) -> Result<String> {

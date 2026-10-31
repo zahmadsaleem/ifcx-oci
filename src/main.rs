@@ -81,9 +81,14 @@ enum Command {
         output: PathBuf,
         #[arg(long, default_value = "model")]
         model_id: String,
-        #[arg(long)]
+        /// Include the original IFC (the default; retained for compatibility).
+        #[arg(long, conflicts_with = "omit_source")]
         include_source: bool,
+        /// Omit the original IFC from the converted release.
+        #[arg(long)]
+        omit_source: bool,
     },
+    /// Validate a local release against the subsoil profile.
     Verify {
         directory: PathBuf,
     },
@@ -91,6 +96,7 @@ enum Command {
         directory: PathBuf,
         destination: String,
     },
+    /// Download release files and check their integrity, independently of their profile.
     Pull {
         source: String,
         #[arg(long)]
@@ -480,12 +486,13 @@ async fn main() -> Result<()> {
             source,
             output,
             model_id,
-            include_source,
+            include_source: _,
+            omit_source,
         } => print(&release::convert(
             &source,
             &output,
             &model_id,
-            include_source,
+            !omit_source,
         )?)?,
         Command::Verify { directory } => print(&release::verify(&directory)?)?,
         Command::Push {
@@ -503,7 +510,7 @@ async fn main() -> Result<()> {
             let client = Client::new(cli.auth_file, cli.plain_http)?;
             if layers.is_empty() {
                 let (digest, report) = client.pull(&source, &output).await?;
-                print(&serde_json::json!({"digest":digest,"verification":report}))?;
+                print(&serde_json::json!({"digest":digest,"integrity":report}))?;
             } else {
                 let (digest, layers) = client.pull_layers(&source, &output, &layers).await?;
                 print(&serde_json::json!({"digest":digest,"layers":layers}))?;
