@@ -15,6 +15,8 @@ TITLES = (
     "Your files. Your choice of apps.",
     "Why IFClite feels approachable.",
     "Every new connection takes work.",
+    "Centralized exchange",
+    "Distributed collaboration",
     "Integrate once to a common agreement.",
     "Each company owns its reservoir.",
     "Many focused apps. One shared release.",
@@ -31,6 +33,7 @@ PUBLIC_FILES = (
     "index.html", "speaker-notes.html", "preview.html", "sources.json",
     "oci-subsoil-manifest.example.json", "subsoil-profile-config.example.json",
     "previews/overview.png",
+    "assets/centralized-exchange.png", "assets/distributed-collaboration.png",
     *(f"previews/slide-{number:02}.png" for number in range(1, len(TITLES) + 1)),
 )
 TOOL_FILES = (
